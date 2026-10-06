@@ -38,12 +38,15 @@ public class TokenService(IOptions<JwtOptions> options) : ITokenService
 
     public GeneratedRefreshToken CreateRefreshToken()
     {
-        // Refresh token JWT değil, tahmin edilemez rastgele bir değer: 64 bayt = 512 bit.
-        var token = Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(64));
+        // Refresh token JWT değil, tahmin edilemez rastgele bir değer.
+        var token = GenerateSecureToken();
         var expiresAt = DateTime.UtcNow.AddDays(_options.RefreshTokenDays);
 
         return new GeneratedRefreshToken(token, HashToken(token), expiresAt);
     }
+
+    // 64 bayt = 512 bit rastgelelik, Base64Url ile URL'de güvenle kullanılabilir.
+    public string GenerateSecureToken() => Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(64));
 
     // Token zaten yüksek entropili rastgele bir değer olduğu için şifrelerdeki gibi yavaş bir
     // algoritmaya (PBKDF2, bcrypt) gerek yok; SHA-256 yeterli ve veritabanında hızlı aranabilir.

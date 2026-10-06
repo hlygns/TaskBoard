@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaskBoard.Application.Common.Interfaces;
 using TaskBoard.Infrastructure.Authentication;
+using TaskBoard.Infrastructure.Email;
 using TaskBoard.Infrastructure.Persistence;
 
 namespace TaskBoard.Infrastructure;
@@ -26,6 +27,7 @@ public static class DependencyInjection
 
         services.AddSingleton<ITokenService, TokenService>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddSingleton<IEmailService, LoggingEmailService>();
 
         return services;
     }
