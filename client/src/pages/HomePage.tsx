@@ -38,7 +38,7 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Örnek pano önizlemesi: gerçek pano ekranı 9. adımda gelecek. */}
+      {/* Statik örnek pano önizlemesi (tanıtım amaçlı). */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-4 sm:grid-cols-3">
           {previewColumns.map((column) => (

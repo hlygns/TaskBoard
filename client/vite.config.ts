@@ -10,7 +10,7 @@ export default defineConfig({
     // /api ile başlayan istekler .NET API'ye gider. Tarayıcı açısından her şey aynı
     // adresten (localhost:5173) geldiği için CORS ayarı gerekmez ve cookie'ler sorunsuz çalışır.
     proxy: {
-      '/api': 'http://localhost:5009',
+      '/api': process.env.API_URL ?? 'http://localhost:5009',
     },
   },
 })

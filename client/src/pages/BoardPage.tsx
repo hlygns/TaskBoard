@@ -4,6 +4,8 @@ import { boardsApi, type BoardDetail } from '../api/boards'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/useAuth'
 import { Avatar } from '../components/Avatar'
+import { BoardCanvas } from '../components/board/BoardCanvas'
+import { CardModal } from '../components/board/CardModal'
 import { BoardForm } from '../components/BoardForm'
 import { MembersPanel } from '../components/MembersPanel'
 import { Modal } from '../components/Modal'
@@ -17,6 +19,7 @@ export function BoardPage() {
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
+  const [openCardId, setOpenCardId] = useState<string | null>(null)
 
   const load = useCallback(() => {
     boardsApi
@@ -59,7 +62,7 @@ export function BoardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <Link to="/boards" className="text-sm text-slate-500 hover:text-slate-700">
@@ -108,16 +111,8 @@ export function BoardPage() {
       </div>
 
       <div className="mt-6 flex flex-col gap-6 lg:flex-row">
-        {/* Sütunlar: kartlar 6. adımda, sürükle-bırak 9. adımda gelecek. */}
-        <div className="flex flex-1 gap-4 overflow-x-auto pb-4">
-          {board.columns.map((column) => (
-            <section key={column.id} className="w-72 shrink-0 rounded-lg bg-slate-100 p-3">
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">{column.name}</h2>
-              <p className="rounded-md border border-dashed border-slate-300 py-6 text-center text-xs text-slate-400">
-                Kartlar bir sonraki adımda
-              </p>
-            </section>
-          ))}
+        <div className="min-w-0 flex-1">
+          <BoardCanvas boardId={board.id} initialColumns={board.columns} onOpenCard={setOpenCardId} onReload={load} />
         </div>
 
         {showMembers && (
@@ -126,6 +121,18 @@ export function BoardPage() {
           </div>
         )}
       </div>
+
+      {openCardId && (
+        <CardModal
+          key={openCardId}
+          cardId={openCardId}
+          members={board.members}
+          currentUserId={user.id}
+          isOwner={isOwner}
+          onClose={() => setOpenCardId(null)}
+          onChanged={load}
+        />
+      )}
 
       {editing && (
         <Modal title="Panoyu düzenle" onClose={() => setEditing(false)}>
