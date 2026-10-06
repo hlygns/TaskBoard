@@ -14,7 +14,8 @@ public class GlobalExceptionHandler(
     {
         var (status, title) = exception switch
         {
-            NotFoundException => (StatusCodes.Status404NotFound, "Bulunamadı"),
+            BadRequestException => (StatusCodes.Status400BadRequest, "Geçersiz istek"),
+            NotFoundException =>(StatusCodes.Status404NotFound, "Bulunamadı"),
             ConflictException => (StatusCodes.Status409Conflict, "Çakışma"),
             UnauthorizedException => (StatusCodes.Status401Unauthorized, "Yetkisiz"),
             ForbiddenException => (StatusCodes.Status403Forbidden, "Erişim engellendi"),

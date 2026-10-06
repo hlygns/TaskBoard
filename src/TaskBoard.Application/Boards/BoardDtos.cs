@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TaskBoard.Application.Cards;
 using TaskBoard.Domain.Enums;
 
 namespace TaskBoard.Application.Boards;
@@ -21,7 +22,7 @@ public record BoardSummaryDto(
 
 public record BoardMemberDto(Guid UserId, string FullName, string Email, BoardRole Role, DateTime JoinedAt);
 
-public record ColumnDto(Guid Id, string Name, double Position);
+public record ColumnDto(Guid Id, string Name, double Position, IReadOnlyList<CardSummaryDto> Cards);
 
 public record BoardDetailDto(
     Guid Id,

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaskBoard.Application.Cards;
 using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Exceptions;
 using TaskBoard.Application.Common.Interfaces;
@@ -43,9 +44,26 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser) : IBoardSe
                     .OrderBy(m => m.JoinedAt)
                     .Select(m => new BoardMemberDto(m.UserId, m.User.FullName, m.User.Email, m.Role, m.JoinedAt))
                     .ToList(),
+                // Pano ekranı tek istekle açılır: sütunlar ve içindeki kart özetleri birlikte gelir.
+                // Eşit sıra numarasında (iki kişi aynı anda aynı yere bırakırsa) Id ile kararlı sıralama.
                 b.Columns
-                    .OrderBy(c => c.Position)
-                    .Select(c => new ColumnDto(c.Id, c.Name, c.Position))
+                    .OrderBy(c => c.Position).ThenBy(c => c.Id)
+                    .Select(c => new ColumnDto(
+                        c.Id,
+                        c.Name,
+                        c.Position,
+                        c.Cards
+                            .OrderBy(card => card.Position).ThenBy(card => card.Id)
+                            .Select(card => new CardSummaryDto(
+                                card.Id,
+                                card.Title,
+                                card.Position,
+                                card.Priority,
+                                card.DueDate,
+                                card.Assignee == null ? null : new MemberRefDto(card.Assignee.Id, card.Assignee.FullName),
+                                card.Comments.Count,
+                                card.Description != null))
+                            .ToList()))
                     .ToList()))
             .SingleAsync(ct);
     }

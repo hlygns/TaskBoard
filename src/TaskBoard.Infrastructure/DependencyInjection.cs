@@ -16,7 +16,9 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("ConnectionStrings:Database ayarı bulunamadı.");
 
         services.AddDbContext<AppDbContext>(options => options
-            .UseNpgsql(connectionString)
+            // İç içe koleksiyon çeken sorgular (pano → sütunlar → kartlar) tek dev JOIN yerine
+            // her koleksiyon için ayrı SQL ile çalışsın; satır tekrarı (kartezyen patlama) olmasın.
+            .UseNpgsql(connectionString, o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
             .UseSnakeCaseNamingConvention());
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
