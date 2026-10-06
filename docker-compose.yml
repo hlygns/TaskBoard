@@ -1,2 +1,16 @@
-# Aşama 2'de doldurulacak: api, db, redis, client servisleri.
-services: {}
+# Aşama 2'de api, redis ve client servisleri de eklenecek.
+services:
+  db:
+    image: postgres:17
+    container_name: taskboard-db
+    environment:
+      POSTGRES_DB: taskboard
+      POSTGRES_USER: taskboard
+      POSTGRES_PASSWORD: taskboard_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
