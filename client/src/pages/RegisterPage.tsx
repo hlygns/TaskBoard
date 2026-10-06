@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/useAuth'
 import { AuthForm, Field } from '../components/AuthForm'
@@ -7,6 +7,7 @@ import { AuthForm, Field } from '../components/AuthForm'
 export function RegisterPage() {
   const { register } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,7 +19,8 @@ export function RegisterPage() {
     setSubmitting(true)
     try {
       await register(fullName, email, password)
-      navigate('/boards', { replace: true })
+      // Davet linkinden geldiyse davete geri dön.
+      navigate(location.state?.from ?? '/boards', { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Bir hata oluştu.')
     } finally {

@@ -17,9 +17,10 @@ export function RequireAuth() {
 // Giriş yapmış kullanıcı login/kayıt sayfalarını görmesin.
 export function GuestOnly() {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) return <Spinner />
-  if (user) return <Navigate to="/boards" replace />
+  if (user) return <Navigate to={location.state?.from ?? '/boards'} replace />
 
   return <Outlet />
 }

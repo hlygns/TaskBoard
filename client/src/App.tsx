@@ -3,8 +3,10 @@ import { AuthProvider } from './auth/AuthContext'
 import { useAuth } from './auth/useAuth'
 import { GuestOnly, RequireAuth } from './auth/RequireAuth'
 import { Layout } from './components/Layout'
+import { BoardPage } from './pages/BoardPage'
 import { BoardsPage } from './pages/BoardsPage'
 import { HomePage } from './pages/HomePage'
+import { InvitationPage } from './pages/InvitationPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -31,7 +33,11 @@ export default function App() {
 
             <Route element={<RequireAuth />}>
               <Route path="boards" element={<BoardsPage />} />
+              <Route path="boards/:boardId" element={<BoardPage />} />
             </Route>
+
+            {/* Davet linki: giriş yapmış ya da yapmamış herkes açabilir. */}
+            <Route path="invitations/:token" element={<InvitationPage />} />
 
             <Route path="*" element={<NotFoundPage />} />
           </Route>
