@@ -1,10 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using TaskBoard.Application.Common.Interfaces;
 using TaskBoard.Domain.Common;
 using TaskBoard.Domain.Entities;
 
 namespace TaskBoard.Infrastructure.Persistence;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options), IAppDbContext
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();

@@ -1,6 +1,27 @@
-@TaskBoard.API_HostAddress = http://localhost:5009
+@host = http://localhost:5009
 
-GET {{TaskBoard.API_HostAddress}}/weatherforecast/
-Accept: application/json
+### Kayıt ol
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "hulya@example.com",
+  "fullName": "Hülya Güneş",
+  "password": "Sifre12345"
+}
+
+### Giriş yap (yanıttaki accessToken'ı aşağıdaki @token satırına yapıştır)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "hulya@example.com",
+  "password": "Sifre12345"
+}
 
 ###
+@token = BURAYA_ACCESS_TOKEN
+
+### Giriş yapan kullanıcı
+GET {{host}}/api/auth/me
+Authorization: Bearer {{token}}
