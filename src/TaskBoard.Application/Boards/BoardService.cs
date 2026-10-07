@@ -8,7 +8,7 @@ using TaskBoard.Domain.Enums;
 
 namespace TaskBoard.Application.Boards;
 
-public class BoardService(IAppDbContext db, ICurrentUser currentUser) : IBoardService
+public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotifier notifier) : IBoardService
 {
     private static readonly string[] DefaultColumns = ["Yapılacak", "Yapılıyor", "Bitti"];
 
@@ -98,6 +98,7 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser) : IBoardSe
         board.Description = NormalizeDescription(request.Description);
 
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.BoardUpdated), ct);
     }
 
     public async Task DeleteAsync(Guid boardId, CancellationToken ct = default)
@@ -107,6 +108,7 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser) : IBoardSe
         // Sütunlar, kartlar, yorumlar, üyelikler ve davetler veritabanındaki
         // ON DELETE CASCADE kuralıyla birlikte silinir.
         await db.Boards.Where(b => b.Id == boardId).ExecuteDeleteAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.BoardDeleted), ct);
     }
 
     public async Task RemoveMemberAsync(Guid boardId, Guid userId, CancellationToken ct = default)
@@ -131,6 +133,7 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser) : IBoardSe
 
         db.BoardMembers.Remove(membership);
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.MembersChanged), ct);
     }
 
     private static string? NormalizeDescription(string? description) =>

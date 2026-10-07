@@ -11,7 +11,8 @@ public class InvitationService(
     IAppDbContext db,
     ICurrentUser currentUser,
     ITokenService tokenService,
-    IEmailService emailService) : IInvitationService
+    IEmailService emailService,
+    IBoardNotifier notifier) : IInvitationService
 {
     private static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
 
@@ -105,6 +106,7 @@ public class InvitationService(
 
         invitation.Status = InvitationStatus.Accepted;
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(invitation.BoardId, new BoardEvent(BoardEvent.MembersChanged), ct);
 
         return new AcceptInvitationResult(invitation.BoardId);
     }

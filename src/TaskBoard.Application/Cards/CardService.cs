@@ -7,7 +7,7 @@ using TaskBoard.Domain.Enums;
 
 namespace TaskBoard.Application.Cards;
 
-public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardService
+public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotifier notifier) : ICardService
 {
     public async Task<CardSummaryDto> CreateAsync(Guid columnId, CreateCardRequest request, CancellationToken ct = default)
     {
@@ -31,6 +31,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardServ
 
         db.Cards.Add(card);
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardCreated, card.Id, columnId), ct);
 
         var assignee = card.AssigneeId is { } id
             ? await db.Users.Where(u => u.Id == id).Select(u => new MemberRefDto(u.Id, u.FullName)).SingleAsync(ct)
@@ -76,6 +77,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardServ
         card.AssigneeId = request.AssigneeId;
 
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, cardId, card.ColumnId), ct);
         return await GetAsync(cardId, ct);
     }
 
@@ -97,17 +99,19 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardServ
         card.Position = Positioning.PlaceAt(siblings, request.Index, c => c.Position, (c, p) => c.Position = p);
 
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardMoved, cardId, request.ColumnId), ct);
     }
 
     public async Task DeleteAsync(Guid cardId, CancellationToken ct = default)
     {
-        await GetForMemberAsync(cardId, ct);
+        var (card, boardId) = await GetForMemberAsync(cardId, ct);
         await db.Cards.Where(c => c.Id == cardId).ExecuteDeleteAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardDeleted, cardId, card.ColumnId), ct);
     }
 
     public async Task<CommentDto> AddCommentAsync(Guid cardId, AddCommentRequest request, CancellationToken ct = default)
     {
-        await GetForMemberAsync(cardId, ct);
+        var (_, boardId) = await GetForMemberAsync(cardId, ct);
 
         var comment = new Comment
         {
@@ -118,6 +122,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardServ
 
         db.Comments.Add(comment);
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CommentAdded, cardId), ct);
 
         var author = await db.Users.Where(u => u.Id == currentUser.Id)
             .Select(u => new MemberRefDto(u.Id, u.FullName))
@@ -130,7 +135,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardServ
     {
         var comment = await db.Comments
             .Where(c => c.Id == commentId)
-            .Select(c => new { c.AuthorId, c.Card.Column.BoardId })
+            .Select(c => new { c.AuthorId, c.CardId, c.Card.Column.BoardId })
             .SingleOrDefaultAsync(ct)
             ?? throw new NotFoundException("Yorum bulunamadı.");
 
@@ -141,6 +146,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser) : ICardServ
             throw new ForbiddenException("Sadece kendi yorumlarınızı silebilirsiniz.");
 
         await db.Comments.Where(c => c.Id == commentId).ExecuteDeleteAsync(ct);
+        await notifier.NotifyAsync(comment.BoardId, new BoardEvent(BoardEvent.CommentDeleted, comment.CardId), ct);
     }
 
     private async Task<(Card Card, Guid BoardId)> GetForMemberAsync(Guid cardId, CancellationToken ct)

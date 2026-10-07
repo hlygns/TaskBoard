@@ -8,7 +8,7 @@ using TaskBoard.Domain.Entities;
 namespace TaskBoard.Application.Columns;
 
 // Sütun işlemlerini panonun her üyesi yapabilir; sadece pano silme ve davet sahibe özel.
-public class ColumnService(IAppDbContext db, ICurrentUser currentUser) : IColumnService
+public class ColumnService(IAppDbContext db, ICurrentUser currentUser, IBoardNotifier notifier) : IColumnService
 {
     public async Task<ColumnDto> CreateAsync(Guid boardId, CreateColumnRequest request, CancellationToken ct = default)
     {
@@ -24,6 +24,7 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser) : IColumn
 
         db.Columns.Add(column);
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.ColumnCreated, ColumnId: column.Id), ct);
 
         return new ColumnDto(column.Id, column.Name, column.Position, []);
     }
@@ -33,6 +34,7 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser) : IColumn
         var column = await GetForMemberAsync(columnId, ct);
         column.Name = request.Name.Trim();
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(column.BoardId, new BoardEvent(BoardEvent.ColumnUpdated, ColumnId: columnId), ct);
     }
 
     public async Task MoveAsync(Guid columnId, MoveColumnRequest request, CancellationToken ct = default)
@@ -46,14 +48,16 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser) : IColumn
 
         column.Position = Positioning.PlaceAt(siblings, request.Index, c => c.Position, (c, p) => c.Position = p);
         await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(column.BoardId, new BoardEvent(BoardEvent.ColumnMoved, ColumnId: columnId), ct);
     }
 
     public async Task DeleteAsync(Guid columnId, CancellationToken ct = default)
     {
-        await GetForMemberAsync(columnId, ct);
+        var column = await GetForMemberAsync(columnId, ct);
 
         // İçindeki kartlar ve yorumlar ON DELETE CASCADE ile silinir.
         await db.Columns.Where(c => c.Id == columnId).ExecuteDeleteAsync(ct);
+        await notifier.NotifyAsync(column.BoardId, new BoardEvent(BoardEvent.ColumnDeleted, ColumnId: columnId), ct);
     }
 
     private async Task<Column> GetForMemberAsync(Guid columnId, CancellationToken ct)

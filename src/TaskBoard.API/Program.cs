@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using TaskBoard.API.ErrorHandling;
+using TaskBoard.API.Realtime;
 using TaskBoard.API.Services;
 using TaskBoard.Application;
 using TaskBoard.Application.Common.Interfaces;
@@ -19,6 +20,10 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<PresenceTracker>();
+builder.Services.AddScoped<IBoardNotifier, SignalRBoardNotifier>();
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -43,6 +48,18 @@ builder.Services
             ValidateLifetime = true,
             // Varsayılan 5 dakikalık tolerans 15 dakikalık token için fazla.
             ClockSkew = TimeSpan.FromSeconds(30)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            // Tarayıcı WebSocket bağlantısına Authorization başlığı ekleyemez; SignalR istemcisi
+            // token'ı ?access_token= ile gönderir. Bunu sadece hub adresleri için kabul ediyoruz.
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    context.Token = token;
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization();
@@ -71,5 +88,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<BoardHub>("/hubs/board");
 
 app.Run();
