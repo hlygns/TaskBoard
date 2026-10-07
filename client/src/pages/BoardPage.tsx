@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { boardsApi, type BoardDetail } from '../api/boards'
 import { ApiError } from '../api/client'
@@ -10,6 +10,25 @@ import { BoardForm } from '../components/BoardForm'
 import { MembersPanel } from '../components/MembersPanel'
 import { Modal } from '../components/Modal'
 import { Spinner } from '../components/Spinner'
+import { ToastStack } from '../components/Toasts'
+import { useToasts } from '../components/useToasts'
+import { useBoardRealtime, type BoardEvent, type BoardEventType } from '../realtime/useBoardRealtime'
+
+const eventMessages: Record<BoardEventType, string> = {
+  BoardUpdated: 'pano bilgilerini güncelledi',
+  BoardDeleted: 'panoyu sildi',
+  MembersChanged: 'üye listesini güncelledi',
+  ColumnCreated: 'yeni bir sütun ekledi',
+  ColumnUpdated: 'bir sütunu yeniden adlandırdı',
+  ColumnMoved: 'bir sütunu taşıdı',
+  ColumnDeleted: 'bir sütunu sildi',
+  CardCreated: 'yeni bir kart ekledi',
+  CardUpdated: 'bir kartı güncelledi',
+  CardMoved: 'bir kartı taşıdı',
+  CardDeleted: 'bir kartı sildi',
+  CommentAdded: 'yorum yazdı',
+  CommentDeleted: 'bir yorumu sildi',
+}
 
 export function BoardPage() {
   const { boardId } = useParams<{ boardId: string }>()
@@ -20,6 +39,8 @@ export function BoardPage() {
   const [editing, setEditing] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [openCardId, setOpenCardId] = useState<string | null>(null)
+  const [cardRefreshKey, setCardRefreshKey] = useState(0)
+  const { toasts, show: showToast } = useToasts()
 
   const load = useCallback(() => {
     boardsApi
@@ -29,6 +50,36 @@ export function BoardPage() {
   }, [boardId])
 
   useEffect(load, [load])
+
+  // Art arda gelen olaylarda (ör. biri hızlıca üç kart taşıdı) panoyu tek seferde yükle.
+  const reloadTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const scheduleReload = useCallback(() => {
+    clearTimeout(reloadTimer.current)
+    reloadTimer.current = setTimeout(load, 150)
+  }, [load])
+  useEffect(() => () => clearTimeout(reloadTimer.current), [])
+
+  function handleBoardEvent(event: BoardEvent, actor: { fullName: string }) {
+    showToast(`${actor.fullName} ${eventMessages[event.type]}`)
+
+    if (event.type === 'BoardDeleted') {
+      navigate('/boards', { replace: true })
+      return
+    }
+
+    // Açık olan kart başkası tarafından değiştirildiyse detay penceresini de güncelle.
+    if (event.cardId && event.cardId === openCardId) {
+      if (event.type === 'CardDeleted') setOpenCardId(null)
+      else setCardRefreshKey((k) => k + 1)
+    }
+
+    // Olay sadece "ne değişti" der; güncel pano verisini kendi yetkimizle API'den çekiyoruz.
+    scheduleReload()
+  }
+
+  const { online } = useBoardRealtime(boardId, { onEvent: handleBoardEvent, onReconnected: load })
+  const onlineIds = new Set(online.map((u) => u.userId))
+  const othersOnline = online.filter((u) => u.userId !== user?.id)
 
   if (error)
     return (
@@ -42,6 +93,8 @@ export function BoardPage() {
   if (!board || !user) return <Spinner />
 
   const isOwner = board.myRole === 'Owner'
+  // Çevrimiçi üyeler önde görünsün.
+  const sortedMembers = [...board.members].sort((a, b) => Number(onlineIds.has(b.userId)) - Number(onlineIds.has(a.userId)))
 
   async function handleUpdate(input: { name: string; description: string | null }) {
     await boardsApi.update(board!.id, input)
@@ -73,13 +126,20 @@ export function BoardPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {othersOnline.length > 0 && (
+            <span className="hidden text-xs text-slate-500 md:inline">
+              {othersOnline.length === 1
+                ? `${othersOnline[0].fullName} şu an panoda`
+                : `${othersOnline.length} kişi şu an panoda`}
+            </span>
+          )}
           <button
             onClick={() => setShowMembers((v) => !v)}
             className="flex items-center -space-x-2 rounded-full p-1 hover:bg-slate-100"
             title="Üyeler"
           >
-            {board.members.slice(0, 4).map((m) => (
-              <Avatar key={m.userId} name={m.fullName} size="sm" />
+            {sortedMembers.slice(0, 4).map((m) => (
+              <Avatar key={m.userId} name={m.fullName} size="sm" online={onlineIds.has(m.userId)} />
             ))}
             {board.members.length > 4 && (
               <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-200 text-xs ring-2 ring-white">
@@ -117,7 +177,7 @@ export function BoardPage() {
 
         {showMembers && (
           <div className="w-full shrink-0 lg:w-80">
-            <MembersPanel board={board} currentUserId={user.id} onChanged={load} />
+            <MembersPanel board={board} currentUserId={user.id} onlineIds={onlineIds} onChanged={load} />
           </div>
         )}
       </div>
@@ -129,6 +189,7 @@ export function BoardPage() {
           members={board.members}
           currentUserId={user.id}
           isOwner={isOwner}
+          refreshKey={cardRefreshKey}
           onClose={() => setOpenCardId(null)}
           onChanged={load}
         />
@@ -145,6 +206,8 @@ export function BoardPage() {
           />
         </Modal>
       )}
+
+      <ToastStack toasts={toasts} />
     </div>
   )
 }

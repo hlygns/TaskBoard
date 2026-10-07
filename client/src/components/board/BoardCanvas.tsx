@@ -38,10 +38,25 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
 
   // Pano yeniden yüklendiğinde (kart detayı kaydedildi vb.) yerel durumu sunucudan gelenle değiştir.
   // Effect yerine render sırasında karşılaştırıyoruz; böylece ekstra bir render turu olmaz.
+  //
+  // Sürükleme sırasında başka birinin değişikliği gelirse uygulamıyoruz: elimizdeki kart kayardı.
+  // Bırakınca, kendi taşımamız sunucuya yazıldıktan sonra pano baştan yüklenir (needsReload).
   const [syncedFrom, setSyncedFrom] = useState(initialColumns)
+  const [needsReload, setNeedsReload] = useState(false)
+  const dragging = activeCard !== null || activeColumn !== null
   if (initialColumns !== syncedFrom) {
     setSyncedFrom(initialColumns)
-    setColumns(initialColumns)
+    if (dragging) setNeedsReload(true)
+    else setColumns(initialColumns)
+  }
+
+  // Taşıma isteği bittikten sonra, sürükleme sırasında kaçırılan değişiklikler varsa panoyu tazele.
+  function afterDrop(request?: Promise<unknown>) {
+    const reload = needsReload
+    setNeedsReload(false)
+    Promise.resolve(request)
+      .catch(() => onReload())
+      .then(() => reload && onReload())
   }
 
   const sensors = useSensors(
@@ -105,21 +120,19 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
     setActiveColumn(null)
 
     if (isColumn) {
-      if (!over) return
-      const overColumnId = resolveColumnId(String(over.id), over.data.current?.type)
+      const overColumnId = over ? resolveColumnId(String(over.id), over.data.current?.type) : undefined
       const from = columns.findIndex((c) => c.id === activeId)
       const to = columns.findIndex((c) => c.id === overColumnId)
-      if (from < 0 || to < 0 || from === to) return
+      if (from < 0 || to < 0 || from === to) return afterDrop()
 
       setColumns(arrayMove(columns, from, to))
-      columnsApi.move(activeId, to).catch(onReload)
-      return
+      return afterDrop(columnsApi.move(activeId, to))
     }
 
     const origin = dragOrigin.current
     dragOrigin.current = null
     const column = findColumnOfCard(activeId)
-    if (!origin || !column) return
+    if (!origin || !column) return afterDrop()
 
     // Aynı sütun içinde yer değiştirme (sütun değişimi zaten onDragOver'da yapıldı).
     let cards = column.cards
@@ -131,10 +144,10 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
     }
 
     const index = cards.findIndex((c) => c.id === activeId)
-    if (column.id === origin.columnId && index === origin.index) return
+    if (column.id === origin.columnId && index === origin.index) return afterDrop()
 
     // Sunucuya "şu sütunun şu sırasına" diyoruz; sıra numarasını sunucu hesaplar.
-    cardsApi.move(activeId, column.id, index).catch(onReload)
+    afterDrop(cardsApi.move(activeId, column.id, index))
   }
 
   function handleDragCancel() {
@@ -142,6 +155,7 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
     setActiveColumn(null)
     dragOrigin.current = null
     setColumns(snapshot.current)
+    afterDrop()
   }
 
   return (

@@ -6,6 +6,18 @@ export function setAccessToken(token: string | null) {
   accessToken = token
 }
 
+export function getAccessToken() {
+  return accessToken
+}
+
+// Açık bir SignalR bağlantısı varsa kimliği her isteğe eklenir; sunucu bu isteğin yol açtığı
+// canlı bildirimi bize geri göndermez (ekranımızı zaten kendimiz güncelledik).
+let realtimeConnectionId: string | null = null
+
+export function setRealtimeConnectionId(id: string | null) {
+  realtimeConnectionId = id
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -59,6 +71,7 @@ export async function api<T>(path: string, options: RequestOptions = {}, retry =
   const headers: Record<string, string> = {}
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+  if (realtimeConnectionId) headers['X-Connection-Id'] = realtimeConnectionId
 
   const res = await fetch(path, {
     method: options.method ?? 'GET',

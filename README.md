@@ -2,7 +2,7 @@
 
 Ekipler için Kanban tarzı görev yönetimi uygulaması. Pano oluştur, ekip arkadaşlarını e-posta ile davet et, kartları sütunlar arasında sürükle-bırak ile taşı; kartlara kişi, son tarih ve öncelik ata, yorumlaş.
 
-**Backend:** ASP.NET Core 10 · Clean Architecture · EF Core · PostgreSQL · JWT
+**Backend:** ASP.NET Core 10 · Clean Architecture · EF Core · PostgreSQL · JWT · SignalR
 **Frontend:** React 19 · TypeScript · Vite · Tailwind CSS · dnd-kit
 
 ![Pano ekranı](docs/screenshots/board.png)
@@ -18,6 +18,7 @@ Ekipler için Kanban tarzı görev yönetimi uygulaması. Pano oluştur, ekip ar
 - **E-posta ile davet:** Tek kullanımlık, süreli davet linki; sadece davet edilen e-postanın sahibi kabul edebilir
 - **Sütunlar ve kartlar:** Oluşturma, düzenleme, silme; sürükle-bırak ile kart ve sütun taşıma (fare ve klavye)
 - **Kart detayı:** Kişi atama, son tarih (geçmişse kırmızı), öncelik, açıklama, yorumlar
+- **Canlı güncelleme (SignalR):** Başkasının taşıdığı kart, eklediği yorum vb. sayfa yenilemeden görünür; "Ayşe bir kartı taşıdı" bildirimi ve panoda o an kimlerin olduğu (yeşil nokta)
 
 ## Mimari
 
@@ -64,6 +65,15 @@ Aynı aralığa defalarca ekleme yapılırsa `double` hassasiyeti tükenir. Aral
 ### Yetkilendirme
 - Panonun üyesi olmayan kullanıcıya **404** döner, 403 değil: panonun var olduğu bile sızmaz.
 - Tüm pano/sütun/kart/yorum işlemleri tek bir yardımcıdan geçer: [`BoardAuthorization.cs`](src/TaskBoard.Application/Common/BoardAuthorization.cs).
+
+### Canlı güncelleme (SignalR)
+- Pano sayfasını açan istemci `/hubs/board` hub'ına bağlanır ve o panonun **grubuna** katılır (`JoinBoard`). Gruba sadece panonun üyeleri katılabilir.
+- Application katmanı SignalR'ı bilmez: servisler değişikliği kaydettikten sonra `IBoardNotifier`'a "bu panoda şu oldu" der; SignalR uygulaması API katmanındadır.
+- Olay mesajı küçüktür (`CardMoved`, kart ve sütun kimliği, yapan kişi). İstemci güncel veriyi kendi yetkisiyle API'den çeker; böylece yetki kontrolü tek yerde kalır ve mesajlardan veri sızmaz.
+- Değişikliği yapan istemci, isteğe SignalR bağlantı kimliğini `X-Connection-Id` başlığıyla ekler; sunucu olayı ona geri göndermez (ekranını zaten iyimser olarak güncelledi).
+- Sürükleme sırasında başkasının değişikliği gelirse uygulanmaz, bırakınca pano tazelenir; böylece tutulan kart kaymaz.
+- Tarayıcı WebSocket isteğine `Authorization` başlığı ekleyemediği için JWT, sadece `/hubs` yolunda `access_token` sorgu parametresinden okunur.
+- "Şu an panoda" bilgisi sunucu belleğinde tutulur. API birden fazla kopya çalıştırılırsa bu bilgi ve SignalR mesajları için Redis gerekir (Redis backplane).
 
 ### Diğer
 - **Hata yönetimi:** Servisler `NotFoundException`, `ForbiddenException` gibi hatalar fırlatır; tek bir `IExceptionHandler` bunları RFC 9457 ProblemDetails yanıtlarına çevirir. Controller'larda try/catch yok.
@@ -126,7 +136,7 @@ dotnet test
 ## Yol haritası
 
 - [x] **1. Aşama:** Kimlik doğrulama, panolar, davetler, sütunlar ve kartlar, sürükle-bırak, kart detayı ve yorumlar
-- [ ] SignalR ile canlı güncelleme (kart taşıma, yeni yorum, "şu an panoda" göstergesi)
+- [x] SignalR ile canlı güncelleme (kart taşıma, yeni yorum, "şu an panoda" göstergesi)
 - [ ] Pano aktivite geçmişi
 - [ ] Hangfire ile son tarih hatırlatma ve günlük özet maili (gerçek SMTP)
 - [ ] Redis ile pano verisini cache'leme

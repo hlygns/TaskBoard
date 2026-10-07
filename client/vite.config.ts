@@ -11,6 +11,8 @@ export default defineConfig({
     // adresten (localhost:5173) geldiği için CORS ayarı gerekmez ve cookie'ler sorunsuz çalışır.
     proxy: {
       '/api': process.env.API_URL ?? 'http://localhost:5009',
+      // SignalR: WebSocket bağlantısı da API'ye iletilsin.
+      '/hubs': { target: process.env.API_URL ?? 'http://localhost:5009', ws: true },
     },
   },
 })

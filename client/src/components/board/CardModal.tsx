@@ -14,21 +14,28 @@ type CardModalProps = {
   onClose: () => void
   // Kart değiştiğinde pano ekranındaki kart yüzü de güncellensin.
   onChanged: () => void
+  // Başka biri bu kartı değiştirdiğinde (canlı bildirim) artar; kart sunucudan yeniden çekilir.
+  refreshKey: number
 }
 
 const inputClass =
   'mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
 
-export function CardModal({ cardId, members, currentUserId, isOwner, onClose, onChanged }: CardModalProps) {
+export function CardModal({ cardId, members, currentUserId, isOwner, onClose, onChanged, refreshKey }: CardModalProps) {
   const [card, setCard] = useState<CardDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Kart sunucudan her yüklendiğinde artar; form bu değerle yeniden kurulur.
+  const [loadVersion, setLoadVersion] = useState(0)
 
   useEffect(() => {
     cardsApi
       .get(cardId)
-      .then(setCard)
+      .then((loaded) => {
+        setCard(loaded)
+        setLoadVersion((v) => v + 1)
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Kart yüklenemedi.'))
-  }, [cardId])
+  }, [cardId, refreshKey])
 
   return (
     <Modal title={card ? `${card.columnName} sütununda` : 'Kart'} size="lg" onClose={onClose}>
@@ -37,6 +44,9 @@ export function CardModal({ cardId, members, currentUserId, isOwner, onClose, on
       {card && (
         <>
           <CardEditor
+            // Başkası kartı değiştirince form yeni değerlerle baştan kurulsun.
+            // (Kendi kaydımızda yeniden kurulmaz; "Kaydedildi" mesajı kaybolmasın.)
+            key={loadVersion}
             card={card}
             members={members}
             onSaved={(updated) => {

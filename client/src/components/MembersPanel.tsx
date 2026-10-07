@@ -6,10 +6,12 @@ import { Avatar } from './Avatar'
 type MembersPanelProps = {
   board: BoardDetail
   currentUserId: string
+  // Şu an panoda olan (SignalR ile bağlı) kullanıcılar.
+  onlineIds: Set<string>
   onChanged: () => void
 }
 
-export function MembersPanel({ board, currentUserId, onChanged }: MembersPanelProps) {
+export function MembersPanel({ board, currentUserId, onlineIds, onChanged }: MembersPanelProps) {
   const isOwner = board.myRole === 'Owner'
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [email, setEmail] = useState('')
@@ -55,7 +57,7 @@ export function MembersPanel({ board, currentUserId, onChanged }: MembersPanelPr
       <ul className="mt-4 space-y-3">
         {board.members.map((member) => (
           <li key={member.userId} className="flex items-center gap-3">
-            <Avatar name={member.fullName} size="sm" />
+            <Avatar name={member.fullName} size="sm" online={onlineIds.has(member.userId)} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-slate-800">
                 {member.fullName}

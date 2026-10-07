@@ -1,7 +1,14 @@
 // İsmin baş harflerinden renkli yuvarlak avatar. Renk isimden türetilir, böylece hep aynı kalır.
 const colors = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500', 'bg-violet-500']
 
-export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
+type AvatarProps = {
+  name: string
+  size?: 'sm' | 'md'
+  // Şu an panoda olanlar için sağ altta yeşil nokta.
+  online?: boolean
+}
+
+export function Avatar({ name, size = 'md', online = false }: AvatarProps) {
   const initials = name
     .split(' ')
     .filter(Boolean)
@@ -12,11 +19,17 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
   const sizeClass = size === 'sm' ? 'h-7 w-7 text-xs' : 'h-9 w-9 text-sm'
 
   return (
-    <span
-      title={name}
-      className={`inline-grid shrink-0 place-items-center rounded-full font-medium text-white ring-2 ring-white ${color} ${sizeClass}`}
-    >
-      {initials}
+    <span className="relative inline-flex shrink-0">
+      <span
+        title={online ? `${name} · şu an panoda` : name}
+        className={`inline-grid place-items-center rounded-full font-medium text-white ring-2 ring-white ${color} ${sizeClass}`}
+      >
+        {initials}
+      </span>
+      {online && (
+        // z-10: avatarlar üst üste bindiğinde nokta yandaki avatarın altında kalmasın.
+        <span className="absolute right-0 bottom-0 z-10 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+      )}
     </span>
   )
 }
