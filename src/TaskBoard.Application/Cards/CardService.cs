@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaskBoard.Application.Activities;
 using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Exceptions;
 using TaskBoard.Application.Common.Interfaces;
@@ -11,8 +12,9 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
 {
     public async Task<CardSummaryDto> CreateAsync(Guid columnId, CreateCardRequest request, CancellationToken ct = default)
     {
-        var boardId = await db.Columns.Where(c => c.Id == columnId).Select(c => (Guid?)c.BoardId).SingleOrDefaultAsync(ct)
+        var column = await db.Columns.Where(c => c.Id == columnId).Select(c => new { c.BoardId, c.Name }).SingleOrDefaultAsync(ct)
             ?? throw new NotFoundException("Sütun bulunamadı.");
+        var boardId = column.BoardId;
         await db.EnsureMemberAsync(boardId, currentUser.Id, ct);
         await EnsureAssigneeIsMemberAsync(boardId, request.AssigneeId, ct);
 
@@ -30,6 +32,8 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         };
 
         db.Cards.Add(card);
+        db.LogActivity(boardId, currentUser.Id, ActivityType.CardCreated, card.Id,
+            new { cardTitle = card.Title, columnName = column.Name });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardCreated, card.Id, columnId), ct);
 
@@ -70,11 +74,34 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         var (card, boardId) = await GetForMemberAsync(cardId, ct);
         await EnsureAssigneeIsMemberAsync(boardId, request.AssigneeId, ct);
 
-        card.Title = request.Title.Trim();
-        card.Description = NormalizeText(request.Description);
-        card.DueDate = NormalizeDate(request.DueDate);
+        var title = request.Title.Trim();
+        var description = NormalizeText(request.Description);
+        var dueDate = NormalizeDate(request.DueDate);
+        var assigneeChanged = card.AssigneeId != request.AssigneeId;
+        var detailsChanged = card.Title != title || card.Description != description
+            || card.DueDate != dueDate || card.Priority != request.Priority;
+
+        // Son tarih değiştiyse yeni tarih için tekrar hatırlatma gönderilebilsin.
+        if (card.DueDate != dueDate)
+            card.DueReminderSentAt = null;
+
+        card.Title = title;
+        card.Description = description;
+        card.DueDate = dueDate;
         card.Priority = request.Priority;
         card.AssigneeId = request.AssigneeId;
+
+        if (detailsChanged)
+            db.LogActivity(boardId, currentUser.Id, ActivityType.CardUpdated, cardId, new { cardTitle = title });
+
+        if (assigneeChanged)
+        {
+            var assigneeName = request.AssigneeId is { } assigneeId
+                ? await db.Users.Where(u => u.Id == assigneeId).Select(u => u.FullName).SingleAsync(ct)
+                : null;
+            db.LogActivity(boardId, currentUser.Id, ActivityType.CardAssigned, cardId,
+                new { cardTitle = title, assigneeName });
+        }
 
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, cardId, card.ColumnId), ct);
@@ -86,9 +113,13 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         var (card, boardId) = await GetForMemberAsync(cardId, ct);
 
         // Kart sadece aynı panonun sütunlarına taşınabilir.
-        var targetInSameBoard = await db.Columns.AnyAsync(c => c.Id == request.ColumnId && c.BoardId == boardId, ct);
-        if (!targetInSameBoard)
-            throw new BadRequestException("Hedef sütun bu panoya ait değil.");
+        var targetColumnName = await db.Columns
+            .Where(c => c.Id == request.ColumnId && c.BoardId == boardId)
+            .Select(c => c.Name)
+            .SingleOrDefaultAsync(ct)
+            ?? throw new BadRequestException("Hedef sütun bu panoya ait değil.");
+        var fromColumnName = card.Column.Name;
+        var columnChanged = card.ColumnId != request.ColumnId;
 
         var siblings = await db.Cards
             .Where(c => c.ColumnId == request.ColumnId && c.Id != cardId)
@@ -98,6 +129,11 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         card.ColumnId = request.ColumnId;
         card.Position = Positioning.PlaceAt(siblings, request.Index, c => c.Position, (c, p) => c.Position = p);
 
+        // Aynı sütun içinde sıra değiştirmek geçmişte gürültü olur; sadece sütun değişince kaydediyoruz.
+        if (columnChanged)
+            db.LogActivity(boardId, currentUser.Id, ActivityType.CardMoved, cardId,
+                new { cardTitle = card.Title, fromColumn = fromColumnName, toColumn = targetColumnName });
+
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardMoved, cardId, request.ColumnId), ct);
     }
@@ -105,13 +141,18 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
     public async Task DeleteAsync(Guid cardId, CancellationToken ct = default)
     {
         var (card, boardId) = await GetForMemberAsync(cardId, ct);
-        await db.Cards.Where(c => c.Id == cardId).ExecuteDeleteAsync(ct);
+
+        // Silme ve aktivite kaydı aynı SaveChanges'ta. Yorumlar veritabanında ON DELETE CASCADE ile gider.
+        db.Cards.Remove(card);
+        db.LogActivity(boardId, currentUser.Id, ActivityType.CardDeleted, cardId,
+            new { cardTitle = card.Title, columnName = card.Column.Name });
+        await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardDeleted, cardId, card.ColumnId), ct);
     }
 
     public async Task<CommentDto> AddCommentAsync(Guid cardId, AddCommentRequest request, CancellationToken ct = default)
     {
-        var (_, boardId) = await GetForMemberAsync(cardId, ct);
+        var (card, boardId) = await GetForMemberAsync(cardId, ct);
 
         var comment = new Comment
         {
@@ -121,6 +162,8 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         };
 
         db.Comments.Add(comment);
+        db.LogActivity(boardId, currentUser.Id, ActivityType.CommentAdded, cardId,
+            new { cardTitle = card.Title, excerpt = Excerpt(comment.Content) });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CommentAdded, cardId), ct);
 
@@ -167,6 +210,8 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         if (!isMember)
             throw new BadRequestException("Atanan kişi bu panonun üyesi değil.");
     }
+
+    private static string Excerpt(string text) => text.Length <= 80 ? text : text[..80] + "…";
 
     private static string? NormalizeText(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using TaskBoard.Application.Activities;
 using TaskBoard.Application.Auth;
 using TaskBoard.Application.Boards;
 using TaskBoard.Application.Cards;
@@ -16,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<IInvitationService, InvitationService>();
         services.AddScoped<IColumnService, ColumnService>();
         services.AddScoped<ICardService, CardService>();
+        services.AddScoped<IActivityService, ActivityService>();
 
         return services;
     }

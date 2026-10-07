@@ -10,6 +10,10 @@ public class Card : BaseEntity
     public DateTime? DueDate { get; set; }
     public CardPriority Priority { get; set; } = CardPriority.Medium;
 
+    // Son tarih hatırlatma maili gönderildiyse zamanı. Hatırlatma işi saatte bir çalışır;
+    // bu alan sayesinde aynı karta iki kez mail gitmez. Son tarih değişince sıfırlanır.
+    public DateTime? DueReminderSentAt { get; set; }
+
     // Kesirli sıra numarası: kart iki kartın arasına bırakılınca (önceki + sonraki) / 2 olur.
     // Böylece taşıma işlemi diğer kartları güncellemeden tek satırı değiştirir.
     public double Position { get; set; }

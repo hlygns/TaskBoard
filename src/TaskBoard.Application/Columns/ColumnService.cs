@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using TaskBoard.Application.Activities;
 using TaskBoard.Application.Boards;
 using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Exceptions;
 using TaskBoard.Application.Common.Interfaces;
 using TaskBoard.Domain.Entities;
+using TaskBoard.Domain.Enums;
 
 namespace TaskBoard.Application.Columns;
 
@@ -23,6 +25,7 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser, IBoardNot
         };
 
         db.Columns.Add(column);
+        db.LogActivity(boardId, currentUser.Id, ActivityType.ColumnCreated, column.Id, new { columnName = column.Name });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.ColumnCreated, ColumnId: column.Id), ct);
 
@@ -32,7 +35,11 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser, IBoardNot
     public async Task RenameAsync(Guid columnId, RenameColumnRequest request, CancellationToken ct = default)
     {
         var column = await GetForMemberAsync(columnId, ct);
+        var oldName = column.Name;
         column.Name = request.Name.Trim();
+        if (column.Name != oldName)
+            db.LogActivity(column.BoardId, currentUser.Id, ActivityType.ColumnRenamed, columnId,
+                new { oldName, newName = column.Name });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(column.BoardId, new BoardEvent(BoardEvent.ColumnUpdated, ColumnId: columnId), ct);
     }
@@ -47,6 +54,7 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser, IBoardNot
             .ToListAsync(ct);
 
         column.Position = Positioning.PlaceAt(siblings, request.Index, c => c.Position, (c, p) => c.Position = p);
+        db.LogActivity(column.BoardId, currentUser.Id, ActivityType.ColumnMoved, columnId, new { columnName = column.Name });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(column.BoardId, new BoardEvent(BoardEvent.ColumnMoved, ColumnId: columnId), ct);
     }
@@ -54,9 +62,13 @@ public class ColumnService(IAppDbContext db, ICurrentUser currentUser, IBoardNot
     public async Task DeleteAsync(Guid columnId, CancellationToken ct = default)
     {
         var column = await GetForMemberAsync(columnId, ct);
+        var cardCount = await db.Cards.CountAsync(c => c.ColumnId == columnId, ct);
 
-        // İçindeki kartlar ve yorumlar ON DELETE CASCADE ile silinir.
-        await db.Columns.Where(c => c.Id == columnId).ExecuteDeleteAsync(ct);
+        // Silme ve aktivite kaydı aynı SaveChanges'ta. İçindeki kartlar ve yorumlar ON DELETE CASCADE ile gider.
+        db.Columns.Remove(column);
+        db.LogActivity(column.BoardId, currentUser.Id, ActivityType.ColumnDeleted, columnId,
+            new { columnName = column.Name, cardCount = cardCount.ToString() });
+        await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(column.BoardId, new BoardEvent(BoardEvent.ColumnDeleted, ColumnId: columnId), ct);
     }
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaskBoard.Application.Activities;
 using TaskBoard.Application.Cards;
 using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Exceptions;
@@ -8,7 +9,8 @@ using TaskBoard.Domain.Enums;
 
 namespace TaskBoard.Application.Boards;
 
-public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotifier notifier) : IBoardService
+public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotifier notifier, IBoardCache cache)
+    : IBoardService
 {
     private static readonly string[] DefaultColumns = ["Yapılacak", "Yapılıyor", "Bitti"];
 
@@ -31,9 +33,14 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
 
     public async Task<BoardDetailDto> GetAsync(Guid boardId, CancellationToken ct = default)
     {
+        // Yetki kontrolü her zaman veritabanından: cache'te pano olsa bile üye olmayan göremez.
         var myRole = await db.EnsureMemberAsync(boardId, currentUser.Id, ct);
 
-        return await db.Boards
+        // Cache'teki kopya herkes için aynı; sadece "benim rolüm" isteği yapana göre değişir.
+        if (await cache.GetAsync(boardId, ct) is { } cached)
+            return cached with { MyRole = myRole };
+
+        var board = await db.Boards
             .Where(b => b.Id == boardId)
             .Select(b => new BoardDetailDto(
                 b.Id,
@@ -66,6 +73,9 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
                             .ToList()))
                     .ToList()))
             .SingleAsync(ct);
+
+        await cache.SetAsync(boardId, board, ct);
+        return board;
     }
 
     public async Task<BoardDetailDto> CreateAsync(CreateBoardRequest request, CancellationToken ct = default)
@@ -84,6 +94,7 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
 
         // Pano, üyelik ve sütunlar tek SaveChanges ile tek transaction'da yazılır.
         db.Boards.Add(board);
+        db.LogActivity(board.Id, currentUser.Id, ActivityType.BoardCreated, board.Id, new { boardName = board.Name });
         await db.SaveChangesAsync(ct);
 
         return await GetAsync(board.Id, ct);
@@ -97,6 +108,7 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
         board.Name = request.Name.Trim();
         board.Description = NormalizeDescription(request.Description);
 
+        db.LogActivity(boardId, currentUser.Id, ActivityType.BoardUpdated, boardId, new { boardName = board.Name });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.BoardUpdated), ct);
     }
@@ -123,6 +135,7 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
             throw new ForbiddenException("Üye çıkarmak için pano sahibi olmalısınız.");
 
         var membership = await db.BoardMembers
+            .Include(m => m.User)
             .SingleOrDefaultAsync(m => m.BoardId == boardId && m.UserId == userId, ct)
             ?? throw new NotFoundException("Üye bulunamadı.");
 
@@ -132,6 +145,8 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.AssigneeId, (Guid?)null), ct);
 
         db.BoardMembers.Remove(membership);
+        db.LogActivity(boardId, currentUser.Id, isSelf ? ActivityType.MemberLeft : ActivityType.MemberRemoved, userId,
+            new { memberName = membership.User.FullName });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.MembersChanged), ct);
     }

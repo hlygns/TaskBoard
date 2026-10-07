@@ -1,12 +1,15 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
+using StackExchange.Redis;
 using TaskBoard.API.ErrorHandling;
 using TaskBoard.API.Realtime;
 using TaskBoard.API.Services;
 using TaskBoard.Application;
+using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Interfaces;
 using TaskBoard.Infrastructure;
 using TaskBoard.Infrastructure.Authentication;
@@ -21,9 +24,29 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<PresenceTracker>();
-builder.Services.AddScoped<IBoardNotifier, SignalRBoardNotifier>();
+var signalR = builder.Services.AddSignalR();
+var redisConnection = builder.Configuration.GetConnectionString("Redis");
+if (string.IsNullOrWhiteSpace(redisConnection))
+{
+    builder.Services.AddSingleton<IPresenceTracker, InMemoryPresenceTracker>();
+}
+else
+{
+    // Backplane: API birden fazla sunucuda çalışırsa, bir sunucudaki SignalR mesajı Redis pub/sub
+    // üzerinden diğer sunuculara bağlı istemcilere de ulaşır.
+    signalR.AddStackExchangeRedis(redisConnection, o =>
+    {
+        o.Configuration.ChannelPrefix = RedisChannel.Literal("taskboard");
+        o.Configuration.AbortOnConnectFail = false;
+    });
+    builder.Services.AddSingleton<IPresenceTracker, RedisPresenceTracker>();
+}
+
+// Panoyu değiştiren her işlem önce cache'i temizler, sonra SignalR ile haber verir (decorator).
+builder.Services.AddScoped<SignalRBoardNotifier>();
+builder.Services.AddScoped<IBoardNotifier>(sp => new CacheInvalidatingBoardNotifier(
+    sp.GetRequiredService<IBoardCache>(),
+    sp.GetRequiredService<SignalRBoardNotifier>()));
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -72,6 +95,9 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+    app.Services.MigrateDatabase();
+
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler();
 
@@ -80,7 +106,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     // API'yi tarayıcıdan denemek için: /scalar
     app.MapScalarApiReference();
+    // Arka plan işlerini (kuyruk, düzenli işler, hatalar) görmek için: /hangfire
+    // Varsayılan olarak sadece aynı makineden (localhost) erişilebilir.
+    app.UseHangfireDashboard("/hangfire");
 }
+
+app.Services.ScheduleRecurringJobs();
 
 app.UseHttpsRedirection();
 
@@ -91,3 +122,6 @@ app.MapControllers();
 app.MapHub<BoardHub>("/hubs/board");
 
 app.Run();
+
+// Entegrasyon testlerinde WebApplicationFactory<Program> ile uygulamayı ayağa kaldırabilmek için.
+public partial class Program;

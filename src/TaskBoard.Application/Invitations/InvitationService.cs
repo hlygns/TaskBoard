@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaskBoard.Application.Activities;
 using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Exceptions;
 using TaskBoard.Application.Common.Interfaces;
@@ -54,6 +55,7 @@ public class InvitationService(
         };
 
         db.BoardInvitations.Add(invitation);
+        db.LogActivity(boardId, currentUser.Id, ActivityType.MemberInvited, invitation.Id, new { email });
         await db.SaveChangesAsync(ct);
 
         var boardName = await db.Boards.Where(b => b.Id == boardId).Select(b => b.Name).SingleAsync(ct);
@@ -97,12 +99,18 @@ public class InvitationService(
             .AnyAsync(m => m.BoardId == invitation.BoardId && m.UserId == currentUser.Id, ct);
 
         if (!alreadyMember)
+        {
             db.BoardMembers.Add(new BoardMember
             {
                 BoardId = invitation.BoardId,
                 UserId = currentUser.Id,
                 Role = BoardRole.Member
             });
+
+            var myName = await db.Users.Where(u => u.Id == currentUser.Id).Select(u => u.FullName).SingleAsync(ct);
+            db.LogActivity(invitation.BoardId, currentUser.Id, ActivityType.MemberJoined, currentUser.Id,
+                new { memberName = myName });
+        }
 
         invitation.Status = InvitationStatus.Accepted;
         await db.SaveChangesAsync(ct);
