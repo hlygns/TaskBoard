@@ -141,6 +141,38 @@ export const cardsApi = {
   removeComment: (commentId: string) => api<void>(`/api/comments/${commentId}`, { method: 'DELETE' }),
 }
 
+export type ActivityType =
+  | 'BoardCreated'
+  | 'BoardUpdated'
+  | 'MemberInvited'
+  | 'MemberJoined'
+  | 'MemberRemoved'
+  | 'MemberLeft'
+  | 'ColumnCreated'
+  | 'ColumnRenamed'
+  | 'ColumnMoved'
+  | 'ColumnDeleted'
+  | 'CardCreated'
+  | 'CardUpdated'
+  | 'CardMoved'
+  | 'CardAssigned'
+  | 'CardDeleted'
+  | 'CommentAdded'
+
+export type Activity = {
+  id: string
+  type: ActivityType
+  actor: MemberRef
+  // Kayıt anındaki adlar: cardTitle, columnName, fromColumn, toColumn...
+  data: Record<string, string | null>
+  createdAt: string
+}
+
+export const activitiesApi = {
+  list: (boardId: string, before?: string) =>
+    api<Activity[]>(`/api/boards/${boardId}/activities${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+}
+
 export const invitationsApi = {
   preview: (token: string) => api<InvitationPreview>(`/api/invitations/${token}`),
   accept: (token: string) => api<{ boardId: string }>(`/api/invitations/${token}/accept`, { method: 'POST' }),

@@ -18,6 +18,21 @@ export function setRealtimeConnectionId(id: string | null) {
   realtimeConnectionId = id
 }
 
+// Başarılı her değişiklik isteğinden (POST/PUT/DELETE) sonra haber verir. Kendi değişikliklerimiz
+// için sunucudan canlı bildirim gelmediğinden, aktivite paneli gibi yerler bunu dinler.
+const mutationListeners = new Set<() => void>()
+
+export function onApiMutation(listener: () => void) {
+  mutationListeners.add(listener)
+  return () => {
+    mutationListeners.delete(listener)
+  }
+}
+
+function notifyMutation() {
+  mutationListeners.forEach((listener) => listener())
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -86,6 +101,7 @@ export async function api<T>(path: string, options: RequestOptions = {}, retry =
   }
 
   if (!res.ok) throw new ApiError(res.status, await readErrorMessage(res))
+  if (options.method && options.method !== 'GET' && !path.startsWith('/api/auth/')) notifyMutation()
   if (res.status === 204) return undefined as T
 
   return (await res.json()) as T

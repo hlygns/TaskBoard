@@ -4,6 +4,7 @@ import { boardsApi, type BoardDetail } from '../api/boards'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/useAuth'
 import { Avatar } from '../components/Avatar'
+import { ActivityPanel } from '../components/board/ActivityPanel'
 import { BoardCanvas } from '../components/board/BoardCanvas'
 import { CardModal } from '../components/board/CardModal'
 import { BoardForm } from '../components/BoardForm'
@@ -37,7 +38,9 @@ export function BoardPage() {
   const [board, setBoard] = useState<BoardDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
-  const [showMembers, setShowMembers] = useState(false)
+  // Sağdaki yan panel: üyeler ya da aktivite geçmişi.
+  const [panel, setPanel] = useState<'members' | 'activity' | null>(null)
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0)
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [cardRefreshKey, setCardRefreshKey] = useState(0)
   const { toasts, show: showToast } = useToasts()
@@ -75,6 +78,7 @@ export function BoardPage() {
 
     // Olay sadece "ne değişti" der; güncel pano verisini kendi yetkimizle API'den çekiyoruz.
     scheduleReload()
+    setActivityRefreshKey((k) => k + 1)
   }
 
   const { online } = useBoardRealtime(boardId, { onEvent: handleBoardEvent, onReconnected: load })
@@ -93,6 +97,7 @@ export function BoardPage() {
   if (!board || !user) return <Spinner />
 
   const isOwner = board.myRole === 'Owner'
+  const togglePanel = (next: 'members' | 'activity') => setPanel((current) => (current === next ? null : next))
   // Çevrimiçi üyeler önde görünsün.
   const sortedMembers = [...board.members].sort((a, b) => Number(onlineIds.has(b.userId)) - Number(onlineIds.has(a.userId)))
 
@@ -134,7 +139,7 @@ export function BoardPage() {
             </span>
           )}
           <button
-            onClick={() => setShowMembers((v) => !v)}
+            onClick={() => togglePanel('members')}
             className="flex items-center -space-x-2 rounded-full p-1 hover:bg-slate-100"
             title="Üyeler"
           >
@@ -147,11 +152,11 @@ export function BoardPage() {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setShowMembers((v) => !v)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-          >
+          <button onClick={() => togglePanel('members')} className={panelButtonClass(panel === 'members')}>
             {isOwner ? 'Üyeler ve davet' : 'Üyeler'}
+          </button>
+          <button onClick={() => togglePanel('activity')} className={panelButtonClass(panel === 'activity')}>
+            Aktivite
           </button>
           {isOwner ? (
             <>
@@ -175,9 +180,13 @@ export function BoardPage() {
           <BoardCanvas boardId={board.id} initialColumns={board.columns} onOpenCard={setOpenCardId} onReload={load} />
         </div>
 
-        {showMembers && (
+        {panel && (
           <div className="w-full shrink-0 lg:w-80">
-            <MembersPanel board={board} currentUserId={user.id} onlineIds={onlineIds} onChanged={load} />
+            {panel === 'members' ? (
+              <MembersPanel board={board} currentUserId={user.id} onlineIds={onlineIds} onChanged={load} />
+            ) : (
+              <ActivityPanel boardId={board.id} refreshKey={activityRefreshKey} />
+            )}
           </div>
         )}
       </div>
@@ -210,4 +219,10 @@ export function BoardPage() {
       <ToastStack toasts={toasts} />
     </div>
   )
+}
+
+function panelButtonClass(active: boolean) {
+  return `rounded-md border px-3 py-1.5 text-sm ${
+    active ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+  }`
 }
