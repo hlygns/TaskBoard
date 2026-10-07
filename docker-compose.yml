@@ -1,4 +1,5 @@
-# Aşama 2'de api, redis ve client servisleri de eklenecek.
+# Geliştirme:   docker compose up -d                       → sadece db, redis, mailpit (API ve arayüzü kendin çalıştırırsın)
+# Tüm sistem:   docker compose --profile app up -d --build → + api ve client; uygulama http://localhost:8080
 services:
   db:
     image: postgres:17
@@ -11,6 +12,62 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskboard -d taskboard"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Pano cache'i, SignalR backplane ve "şu an panoda" bilgisi.
+  redis:
+    image: redis:7
+    container_name: taskboard-redis
+    ports:
+      - "6379:6379"
+
+  # Sahte posta kutusu: uygulamanın gönderdiği mailleri yakalar, http://localhost:8025 adresinde gösterir.
+  # Gerçek kimseye mail gitmez.
+  mailpit:
+    image: axllent/mailpit
+    container_name: taskboard-mailpit
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web arayüzü
+
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: src/TaskBoard.API/Dockerfile
+    container_name: taskboard-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Container'lar birbirine servis adıyla ulaşır: db, redis, mailpit.
+      # Gss Encryption Mode=Disable: Kerberos kullanmıyoruz (küçük runtime image'ında kütüphanesi de yok).
+      ConnectionStrings__Database: Host=db;Port=5432;Database=taskboard;Username=taskboard;Password=taskboard_dev;Gss Encryption Mode=Disable
+      ConnectionStrings__Redis: redis:6379
+      # Gerçek ortamda .env dosyasından ya da gizli değişken olarak verilmeli.
+      Jwt__Secret: ${JWT_SECRET:-docker-compose-local-secret-change-me-0123456789}
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      ClientApp__Url: http://localhost:8080
+      Database__MigrateOnStartup: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+
+  client:
+    profiles: ["app"]
+    build: ./client
+    container_name: taskboard-client
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:

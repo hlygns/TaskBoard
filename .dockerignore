@@ -1,0 +1,9 @@
+**/bin
+**/obj
+**/node_modules
+client/dist
+.git
+.vs
+.vscode
+docs
+tests
