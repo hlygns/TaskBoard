@@ -10,9 +10,13 @@ Ekipler için Kanban tarzı görev yönetimi uygulaması. Pano oluştur, ekip ar
 
 ![Pano ekranı](docs/screenshots/board.png)
 
-| Kart detayı | Aktivite geçmişi |
+| Kart detayı: etiket, alt görevler | Görevlerim |
 |---|---|
-| ![Kart detayı](docs/screenshots/card.png) | ![Aktivite geçmişi](docs/screenshots/activity.png) |
+| ![Kart detayı](docs/screenshots/card-detail.png) | ![Görevlerim](docs/screenshots/my-tasks.png) |
+
+| Kişisel pano: şablon, etiket, filtre | Aktivite geçmişi |
+|---|---|
+| ![Kişisel pano](docs/screenshots/board-personal.png) | ![Aktivite geçmişi](docs/screenshots/activity.png) |
 
 ## Özellikler
 
@@ -21,6 +25,12 @@ Ekipler için Kanban tarzı görev yönetimi uygulaması. Pano oluştur, ekip ar
 - **E-posta ile davet:** Tek kullanımlık, süreli davet linki; sadece davet edilen e-postanın sahibi kabul edebilir
 - **Sütunlar ve kartlar:** Oluşturma, düzenleme, silme; sürükle-bırak ile kart ve sütun taşıma (fare ve klavye)
 - **Kart detayı:** Kişi atama, son tarih (geçmişse kırmızı), öncelik, açıklama, yorumlar
+- **Alt görevler:** Kart içinde checklist; kart yüzünde "2/5" ilerleme
+- **Tamamlandı işareti:** Kart yüzünden tek tıkla; biten kart soluk ve üstü çizili görünür, hatırlatmalara girmez
+- **Etiketler ve filtre:** Panoya özel renkli etiketler; arama, etiket, öncelik, tarih (gecikmiş / bugün / bu hafta / tarihsiz) ve "tamamlananları gizle" filtreleri
+- **Arşiv:** Kartı silmeden panodan kaldır, istediğinde geri al
+- **Pano şablonları:** Basit, Yazılım projesi, Ders / Ödev, Kişisel — hazır sütun ve etiketlerle
+- **Görevlerim:** Tüm panolardaki açık işler tek listede: Gecikmiş / Bugün / Yarın / Bu hafta / Daha sonra; buradan tamamla ya da karta git
 - **Canlı güncelleme (SignalR):** Başkasının taşıdığı kart, eklediği yorum vb. sayfa yenilemeden görünür; "Ayşe bir kartı taşıdı" bildirimi ve panoda o an kimlerin olduğu (yeşil nokta)
 - **Aktivite geçmişi:** "Hülya 'Logo' kartını taşıdı: Yapılacak → Bitti – 10 dk önce"; canlı güncellenir, kart silinse bile kaydı kalır
 - **E-posta bildirimleri (Hangfire):** Davet maili, son tarihi yaklaşan kartlar için hatırlatma, her sabah günlük özet
@@ -88,19 +98,27 @@ Aynı aralığa defalarca ekleme yapılırsa `double` hassasiyeti tükenir. Aral
 - Sayfalama **keyset** ile yapılır (`?before=<createdAt>`): `OFFSET`'in aksine derin sayfalarda da `(board_id, created_at)` index'inden doğrudan okunur ve yeni kayıt eklenince sayfalar kaymaz.
 - Kendi değişikliklerimiz için sunucudan canlı olay gelmediğinden, API istemcisi başarılı her değişiklik isteğinden sonra uygulama içinde bir sinyal yayar; aktivite paneli bunu dinler.
 
+### Kişisel kullanım: "kimin işi?" kuralı
+- Tek başına kullanımda kimse kendini karta atamaz; bu yüzden atanmamış kartların sorumlusu **pano sahibidir**. Kural tek yerde ([`Responsibility.cs`](src/TaskBoard.Application/Notifications/Responsibility.cs)) bir `IQueryable` uzantısı olarak yazılır ve hatırlatma, günlük özet ve "Görevlerim" aynı kuralı kullanır. EF bunu tek SQL'e çevirir: `COALESCE(assignee_id, (SELECT user_id FROM board_members WHERE role = 'Owner' LIMIT 1))`.
+- "Tamamlandı" bilgisi sütun adından ("Bitti") tahmin edilmez, kartın `CompletedAt` alanıdır. Bu değişikliği getiren migration, eski verileri yeni kurala uydurmak için bir **veri migration'ı** da içerir: "Bitti/Done/Tamamlandı" sütunlarındaki mevcut kartları tamamlandı işaretler.
+- Arşivlenen kart sıralamaya katılmaz; geri alınınca sütunun sonuna döner (arşivdeyken araya giren kartlarla karışmasın).
+- **Filtre açıkken sürükle-bırak kapalıdır:** Bazı kartlar gizliyken "şu sıraya bıraktım" bilgisi (`index`) görünmeyen kartları saymaz ve kart yanlış yere düşerdi.
+- Etiketler panoya aittir; kart–etiket çoka çok ilişkisi `card_labels` ara tablosuyla tutulur, başka panonun etiketi karta takılamaz. Renkler sunucudaki sabit paletten seçilir.
+- "Görevlerim" gruplamasını (Bugün / Yarın…) istemci yapar: "bugün" kullanıcının saat dilimine göredir.
+
 ### Arka plan işleri (Hangfire) ve e-posta
 - Mailler HTTP isteği içinde gönderilmez; **Hangfire kuyruğuna** atılır. İstek SMTP'yi beklemez (davet isteği ~0,2 sn), SMTP geçici olarak çökerse Hangfire otomatik tekrar dener. İşler PostgreSQL'de (`hangfire` şeması) saklandığı için API yeniden başlasa da kaybolmaz.
 - Düzenli işler (Europe/Istanbul saatiyle):
 
   | İş | Zaman | Ne yapar |
   |---|---|---|
-  | `due-date-reminders` | Saatte bir | Son tarihi bugün/yarın olan, atanmış kartlar için kişi başına tek hatırlatma maili |
-  | `daily-digest` | Her gün 08:00 | Gecikmiş ve 3 gün içinde son tarihi olan kartlar + son 24 saatteki hareket sayısı |
+  | `due-date-reminders` | Saatte bir | Son tarihi bugün/yarın olan açık kartlar için sorumlu kişiye (atanan ya da pano sahibi) tek hatırlatma maili |
+  | `daily-digest` | Her gün 08:00 | Sorumlu olunan gecikmiş ve 3 gün içinde son tarihi olan kartlar + son 24 saatteki hareket sayısı |
   | `activity-cleanup` | Pazar 03:00 | 180 günden eski aktivite kayıtlarını siler |
 
 - Aynı karta iki kez hatırlatma gitmemesi için `Card.DueReminderSentAt` tutulur; son tarih değişince sıfırlanır. İş önce maili kuyruğa alır, sonra kartı işaretler: arada çökerse en kötü ihtimalle mail iki kez gider, hiç gitmemesinden iyidir (at-least-once).
 - İş mantığı (`DueDateReminderJob` vb.) Application katmanındadır ve Hangfire'ı bilmez; zaman `TimeProvider` ile alınır (test edilebilir). Hangfire sadece zamanlar.
-- Mail şablonlarındaki tüm kullanıcı metinleri HTML-encode edilir. "Bitti" adlı sütunlardaki kartlar tamamlanmış sayılır ve maillere girmez.
+- Mail şablonlarındaki tüm kullanıcı metinleri HTML-encode edilir. Tamamlanan ve arşivlenen kartlar maillere girmez.
 
 ### Redis
 - **Pano cache'i:** Pano detayı (sütunlar + kart özetleri) Redis'te 10 dk tutulur; ilk açılış ~23 ms, cache'ten ~6 ms. Yetki kontrolü her zaman veritabanından yapılır; cache'teki kopya herkes için aynıdır, sadece `myRole` isteği yapana göre doldurulur.
@@ -178,7 +196,8 @@ dotnet test        # Docker çalışıyor olmalı
   - Yetki: yabancıya 404, üyeye 403, sahip panodan ayrılamaz, çıkarılan üyenin atamaları kalkar
   - Davet: sadece davet edilen e-posta kabul edebilir, tek kullanımlık, girişsiz önizleme
   - Kartlar: sütunlar arası/içi taşıma kalıcılığı, başka panoya taşıma engeli, aktivite geçmişi (kart silinince de adı kalır), keyset sayfalama
-  - Hatırlatma işi: sadece yakın tarihli, atanmış ve bitmemiş kartlar; ikinci çalışmada tekrar mail yok
+  - Hatırlatma işi: atanan kişiye ya da (atanmamışsa) pano sahibine; tamamlanan/arşivlenen kartlar hariç; ikinci çalışmada tekrar mail yok
+  - Kişisel özellikler: şablonlar, alt görev ilerlemesi, etiketlerin pano sınırı ve benzersiz adı, arşivle/geri al sırası, Görevlerim kapsamı
 
 ### CI (GitHub Actions)
 
@@ -206,6 +225,12 @@ Her push ve pull request'te: **backend** (Release derleme + tüm testler, Testco
 | POST | `/api/cards/{id}/comments` | Yorum ekle |
 | DELETE | `/api/comments/{id}` | Yorumu sil (yazan ya da pano sahibi) |
 | GET | `/api/boards/{id}/activities?before=&limit=` | Aktivite geçmişi (keyset sayfalama) |
+| GET | `/api/board-templates` | Pano şablonları |
+| PUT | `/api/cards/{id}/complete` · `/archive` · `/labels` | Tamamla · arşivle/geri al · etiketleri ayarla |
+| GET | `/api/boards/{id}/archived-cards` | Arşivdeki kartlar |
+| POST · PATCH · DELETE | `/api/cards/{id}/checklist` · `/api/checklist/{itemId}` | Alt görevler |
+| POST · PUT · DELETE | `/api/boards/{id}/labels` · `/api/labels/{id}` | Pano etiketleri |
+| GET | `/api/me/tasks` | Görevlerim: tüm panolardaki açık işlerim |
 | WS | `/hubs/board` | SignalR: `JoinBoard`, `LeaveBoard`; olaylar `BoardEvent`, `PresenceChanged` |
 
 ## Yol haritası
@@ -216,4 +241,5 @@ Her push ve pull request'te: **backend** (Release derleme + tüm testler, Testco
 - [x] Hangfire ile son tarih hatırlatma ve günlük özet maili (gerçek SMTP)
 - [x] Redis ile pano cache'i, SignalR backplane ve dağıtık "şu an panoda" bilgisi
 - [x] Docker Compose ile tüm sistem, xUnit + Testcontainers entegrasyon testleri, GitHub Actions ile CI
-- [ ] (İsteğe bağlı) React Native mobil uygulama
+- [x] Kişisel kullanım: alt görevler, tamamlandı işareti, etiketler + filtre, arşiv, pano şablonları, "Görevlerim"
+- [ ] Canlı demo (yayınlama) ve PWA ile telefona yükleme
