@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { boardsApi, type BoardDetail } from '../api/boards'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/useAuth'
 import { Avatar } from '../components/Avatar'
 import { ActivityPanel } from '../components/board/ActivityPanel'
+import { ArchivePanel } from '../components/board/ArchivePanel'
 import { BoardCanvas } from '../components/board/BoardCanvas'
 import { CardModal } from '../components/board/CardModal'
+import { buildPredicate, emptyFilter, isFilterActive } from '../components/board/boardFilter'
+import { FilterBar } from '../components/board/FilterBar'
 import { BoardForm } from '../components/BoardForm'
 import { MembersPanel } from '../components/MembersPanel'
 import { Modal } from '../components/Modal'
@@ -38,10 +41,14 @@ export function BoardPage() {
   const [board, setBoard] = useState<BoardDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
-  // Sağdaki yan panel: üyeler ya da aktivite geçmişi.
-  const [panel, setPanel] = useState<'members' | 'activity' | null>(null)
+  // Sağdaki yan panel: üyeler, aktivite geçmişi ya da arşiv.
+  const [panel, setPanel] = useState<'members' | 'activity' | 'archive' | null>(null)
   const [activityRefreshKey, setActivityRefreshKey] = useState(0)
-  const [openCardId, setOpenCardId] = useState<string | null>(null)
+  // "Görevlerim" ekranından gelinirse (?card=...) o kart açık başlar.
+  const [searchParams] = useSearchParams()
+  const [openCardId, setOpenCardId] = useState<string | null>(searchParams.get('card'))
+  const [filter, setFilter] = useState(emptyFilter)
+  const predicate = useMemo(() => (isFilterActive(filter) ? buildPredicate(filter) : undefined), [filter])
   const [cardRefreshKey, setCardRefreshKey] = useState(0)
   const { toasts, show: showToast } = useToasts()
 
@@ -97,7 +104,7 @@ export function BoardPage() {
   if (!board || !user) return <Spinner />
 
   const isOwner = board.myRole === 'Owner'
-  const togglePanel = (next: 'members' | 'activity') => setPanel((current) => (current === next ? null : next))
+  const togglePanel = (next: 'members' | 'activity' | 'archive') => setPanel((current) => (current === next ? null : next))
   // Çevrimiçi üyeler önde görünsün.
   const sortedMembers = [...board.members].sort((a, b) => Number(onlineIds.has(b.userId)) - Number(onlineIds.has(a.userId)))
 
@@ -158,6 +165,9 @@ export function BoardPage() {
           <button onClick={() => togglePanel('activity')} className={panelButtonClass(panel === 'activity')}>
             Aktivite
           </button>
+          <button onClick={() => togglePanel('archive')} className={panelButtonClass(panel === 'archive')}>
+            Arşiv
+          </button>
           {isOwner ? (
             <>
               <button onClick={() => setEditing(true)} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
@@ -175,18 +185,27 @@ export function BoardPage() {
         </div>
       </div>
 
-      <div className="mt-6 flex flex-col gap-6 lg:flex-row">
+      <FilterBar filter={filter} labels={board.labels} onChange={setFilter} />
+
+      <div className="mt-4 flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 flex-1">
-          <BoardCanvas boardId={board.id} initialColumns={board.columns} onOpenCard={setOpenCardId} onReload={load} />
+          <BoardCanvas
+            boardId={board.id}
+            initialColumns={board.columns}
+            labels={board.labels}
+            filter={predicate}
+            onOpenCard={setOpenCardId}
+            onReload={load}
+          />
         </div>
 
         {panel && (
           <div className="w-full shrink-0 lg:w-80">
-            {panel === 'members' ? (
+            {panel === 'members' && (
               <MembersPanel board={board} currentUserId={user.id} onlineIds={onlineIds} onChanged={load} />
-            ) : (
-              <ActivityPanel boardId={board.id} refreshKey={activityRefreshKey} />
             )}
+            {panel === 'activity' && <ActivityPanel boardId={board.id} refreshKey={activityRefreshKey} />}
+            {panel === 'archive' && <ArchivePanel boardId={board.id} refreshKey={activityRefreshKey} onChanged={load} />}
           </div>
         )}
       </div>
@@ -195,6 +214,8 @@ export function BoardPage() {
         <CardModal
           key={openCardId}
           cardId={openCardId}
+          boardId={board.id}
+          labels={board.labels}
           members={board.members}
           currentUserId={user.id}
           isOwner={isOwner}

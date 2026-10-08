@@ -8,6 +8,7 @@ import { BoardsPage } from './pages/BoardsPage'
 import { HomePage } from './pages/HomePage'
 import { InvitationPage } from './pages/InvitationPage'
 import { LoginPage } from './pages/LoginPage'
+import { MyTasksPage } from './pages/MyTasksPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { RegisterPage } from './pages/RegisterPage'
 
@@ -34,6 +35,7 @@ export default function App() {
             <Route element={<RequireAuth />}>
               <Route path="boards" element={<BoardsPage />} />
               <Route path="boards/:boardId" element={<BoardPage />} />
+              <Route path="tasks" element={<MyTasksPage />} />
             </Route>
 
             {/* Davet linki: giriş yapmış ya da yapmamış herkes açabilir. */}

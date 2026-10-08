@@ -21,7 +21,7 @@ export function BoardsPage() {
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Panolar yüklenemedi.'))
   }, [])
 
-  async function handleCreate(input: { name: string; description: string | null }) {
+  async function handleCreate(input: { name: string; description: string | null; template?: string }) {
     const board = await boardsApi.create(input)
     navigate(`/boards/${board.id}`)
   }
@@ -79,8 +79,8 @@ export function BoardsPage() {
       )}
 
       {creating && (
-        <Modal title="Yeni pano" onClose={() => setCreating(false)}>
-          <BoardForm submitLabel="Oluştur" onSubmit={handleCreate} onCancel={() => setCreating(false)} />
+        <Modal title="Yeni pano" size="lg" onClose={() => setCreating(false)}>
+          <BoardForm submitLabel="Oluştur" showTemplates onSubmit={handleCreate} onCancel={() => setCreating(false)} />
         </Modal>
       )}
     </div>

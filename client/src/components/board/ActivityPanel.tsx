@@ -42,6 +42,14 @@ function describe(a: Activity): string {
         : `"${d.cardTitle}" kartının atamasını kaldırdı`
     case 'CardDeleted':
       return `"${d.cardTitle}" kartını sildi`
+    case 'CardCompleted':
+      return `"${d.cardTitle}" kartını tamamladı ✓`
+    case 'CardReopened':
+      return `"${d.cardTitle}" kartını yeniden açtı`
+    case 'CardArchived':
+      return `"${d.cardTitle}" kartını arşivledi`
+    case 'CardRestored':
+      return `"${d.cardTitle}" kartını arşivden geri aldı`
     case 'CommentAdded':
       return `"${d.cardTitle}" kartına yorum yazdı: “${d.excerpt}”`
   }

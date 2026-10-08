@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useState, type FormEvent } from 'react'
 import { cardsApi, columnsApi, type CardSummary, type Column } from '../../api/boards'
 import { ApiError } from '../../api/client'
+import { useBoardView } from './boardView'
 import { CardItem } from './CardItem'
 
 type ColumnViewProps = {
@@ -11,14 +12,19 @@ type ColumnViewProps = {
   onCardAdded: (columnId: string, card: CardSummary) => void
   onRenamed: (columnId: string, name: string) => void
   onDeleted: (columnId: string) => void
+  // Arama/filtre açıksa sadece eşleşen kartlar gösterilir.
+  filter?: (card: CardSummary) => boolean
 }
 
-export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDeleted }: ColumnViewProps) {
+export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDeleted, filter }: ColumnViewProps) {
+  const { dragDisabled } = useBoardView()
   // Sütunun kendisi de sürüklenebilir; sadece başlığından tutulur (listeners başlıkta).
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: column.id,
     data: { type: 'column' },
+    disabled: dragDisabled,
   })
+  const visibleCards = filter ? column.cards.filter(filter) : column.cards
 
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(column.name)
@@ -65,7 +71,7 @@ export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDelet
       <header
         {...attributes}
         {...listeners}
-        className="group flex cursor-grab items-center gap-2 px-3 pt-3 pb-2 active:cursor-grabbing"
+        className={`group flex items-center gap-2 px-3 pt-3 pb-2 ${dragDisabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
       >
         {renaming ? (
           <input
@@ -91,7 +97,10 @@ export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDelet
             title="Yeniden adlandırmak için tıkla"
             className="min-w-0 flex-1 cursor-text truncate text-sm font-semibold text-slate-700"
           >
-            {column.name} <span className="font-normal text-slate-400">{column.cards.length}</span>
+            {column.name}{' '}
+            <span className="font-normal text-slate-400">
+              {filter ? `${visibleCards.length}/${column.cards.length}` : column.cards.length}
+            </span>
           </h2>
         )}
         <button
@@ -104,9 +113,9 @@ export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDelet
         </button>
       </header>
 
-      <SortableContext items={column.cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={visibleCards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <div className="flex min-h-10 flex-col gap-2 overflow-y-auto px-3 pb-2">
-          {column.cards.map((card) => (
+          {visibleCards.map((card) => (
             <CardItem key={card.id} card={card} columnId={column.id} onOpen={onOpenCard} />
           ))}
         </div>

@@ -11,8 +11,9 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useRef, useState, type FormEvent } from 'react'
-import { cardsApi, columnsApi, type CardSummary, type Column } from '../../api/boards'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { cardsApi, columnsApi, type CardSummary, type Column, type Label } from '../../api/boards'
+import { BoardViewContext } from './boardView'
 import { CardFace } from './CardItem'
 import { ColumnView } from './ColumnView'
 
@@ -22,13 +23,16 @@ type BoardCanvasProps = {
   onOpenCard: (cardId: string) => void
   // Sunucuyla aramız bozulursa (ör. taşıma isteği hata verirse) panoyu baştan yükle.
   onReload: () => void
+  labels: Label[]
+  // Arama/filtre açıksa: sadece eşleşen kartlar görünür ve sürükle-bırak kapanır.
+  filter?: (card: CardSummary) => boolean
 }
 
 // Sürükle-bırak akışı:
 //  1. onDragStart: hangi kart/sütun tutuldu, nereden alındı → kaydet
 //  2. onDragOver : kart başka bir sütunun üstüne gelince ekranda hemen o sütuna geçir (canlı önizleme)
 //  3. onDragEnd  : son konumu hesapla, ekranı güncelle (iyimser/optimistic), sonra sunucuya bildir
-export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: BoardCanvasProps) {
+export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, labels, filter }: BoardCanvasProps) {
   const [columns, setColumns] = useState(initialColumns)
   const [activeCard, setActiveCard] = useState<CardSummary | null>(null)
   const [activeColumn, setActiveColumn] = useState<Column | null>(null)
@@ -49,6 +53,20 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
     if (dragging) setNeedsReload(true)
     else setColumns(initialColumns)
   }
+
+  // Kart yüzündeki işaretle tamamla: ekranda hemen değişir (iyimser), sunucu reddederse pano yeniden yüklenir.
+  function toggleComplete(cardId: string, completed: boolean) {
+    setColumns((prev) =>
+      prev.map((column) => ({
+        ...column,
+        cards: column.cards.map((card) => (card.id === cardId ? { ...card, isCompleted: completed } : card)),
+      })),
+    )
+    cardsApi.setCompleted(cardId, completed).catch(onReload)
+  }
+
+  const labelMap = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels])
+  const boardView = { labels: labelMap, toggleComplete, dragDisabled: filter !== undefined }
 
   // Taşıma isteği bittikten sonra, sürükleme sırasında kaçırılan değişiklikler varsa panoyu tazele.
   function afterDrop(request?: Promise<unknown>) {
@@ -159,6 +177,7 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
   }
 
   return (
+    <BoardViewContext.Provider value={boardView}>
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
@@ -181,6 +200,7 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
                 setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, name } : c)))
               }
               onDeleted={(columnId) => setColumns((prev) => prev.filter((c) => c.id !== columnId))}
+              filter={filter}
             />
           ))}
         </SortableContext>
@@ -202,6 +222,7 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload }: B
         )}
       </DragOverlay>
     </DndContext>
+    </BoardViewContext.Provider>
   )
 }
 

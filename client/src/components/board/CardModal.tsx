@@ -1,13 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { cardsApi, type BoardMember, type CardDetail, type CardPriority } from '../../api/boards'
+import { cardsApi, type BoardMember, type CardDetail, type CardPriority, type Label } from '../../api/boards'
 import { ApiError } from '../../api/client'
 import { fromDateInput, priorities, timeAgo, toDateInput } from '../../utils/format'
 import { Avatar } from '../Avatar'
 import { Modal } from '../Modal'
 import { Spinner } from '../Spinner'
+import { Checklist } from './Checklist'
+import { LabelPicker } from './LabelPicker'
 
 type CardModalProps = {
   cardId: string
+  boardId: string
+  labels: Label[]
   members: BoardMember[]
   currentUserId: string
   isOwner: boolean
@@ -21,7 +25,17 @@ type CardModalProps = {
 const inputClass =
   'mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
 
-export function CardModal({ cardId, members, currentUserId, isOwner, onClose, onChanged, refreshKey }: CardModalProps) {
+export function CardModal({
+  cardId,
+  boardId,
+  labels,
+  members,
+  currentUserId,
+  isOwner,
+  onClose,
+  onChanged,
+  refreshKey,
+}: CardModalProps) {
   const [card, setCard] = useState<CardDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Kart sunucudan her yüklendiğinde artar; form bu değerle yeniden kurulur.
@@ -37,12 +51,65 @@ export function CardModal({ cardId, members, currentUserId, isOwner, onClose, on
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Kart yüklenemedi.'))
   }, [cardId, refreshKey])
 
+  async function toggleCompleted() {
+    if (!card) return
+    const completed = card.completedAt === null
+    setCard({ ...card, completedAt: completed ? new Date().toISOString() : null })
+    await cardsApi.setCompleted(card.id, completed)
+    onChanged()
+  }
+
+  async function archive() {
+    if (!card) return
+    await cardsApi.setArchived(card.id, true)
+    onChanged()
+    onClose()
+  }
+
   return (
     <Modal title={card ? `${card.columnName} sütununda` : 'Kart'} size="lg" onClose={onClose}>
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {!card && !error && <Spinner />}
       {card && (
         <>
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleCompleted}
+              aria-pressed={card.completedAt !== null}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                card.completedAt
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  : 'border border-slate-300 text-slate-700 hover:border-emerald-500 hover:text-emerald-700'
+              }`}
+            >
+              {card.completedAt ? '✓ Tamamlandı' : '✓ Tamamla'}
+            </button>
+            {card.completedAt && <span className="text-xs text-slate-500">Tamamlandı · {timeAgo(card.completedAt)}</span>}
+            <button
+              type="button"
+              onClick={archive}
+              title="Panodan kaldırır; Arşiv panelinden geri alabilirsin"
+              className="ml-auto rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              Arşivle
+            </button>
+          </div>
+
+          <div className="mb-5">
+            <LabelPicker
+              boardId={boardId}
+              cardId={card.id}
+              boardLabels={labels}
+              selectedIds={card.labelIds}
+              onChange={(labelIds) => {
+                setCard({ ...card, labelIds })
+                onChanged()
+              }}
+              onLabelsChanged={onChanged}
+            />
+          </div>
+
           <CardEditor
             // Başkası kartı değiştirince form yeni değerlerle baştan kurulsun.
             // (Kendi kaydımızda yeniden kurulmaz; "Kaydedildi" mesajı kaybolmasın.)
@@ -56,6 +123,14 @@ export function CardModal({ cardId, members, currentUserId, isOwner, onClose, on
             onDeleted={() => {
               onChanged()
               onClose()
+            }}
+          />
+          <Checklist
+            cardId={card.id}
+            items={card.checklist}
+            onChange={(checklist) => {
+              setCard({ ...card, checklist })
+              onChanged()
             }}
           />
           <Comments

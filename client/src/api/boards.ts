@@ -35,6 +35,34 @@ export type CardSummary = {
   assignee: MemberRef | null
   commentCount: number
   hasDescription: boolean
+  isCompleted: boolean
+  checklistDone: number
+  checklistTotal: number
+  labelIds: string[]
+}
+
+export type LabelColor =
+  | 'slate'
+  | 'red'
+  | 'orange'
+  | 'amber'
+  | 'green'
+  | 'teal'
+  | 'sky'
+  | 'indigo'
+  | 'violet'
+  | 'pink'
+
+export type Label = {
+  id: string
+  name: string
+  color: LabelColor
+}
+
+export type ChecklistItem = {
+  id: string
+  text: string
+  isDone: boolean
 }
 
 export type Column = {
@@ -63,6 +91,39 @@ export type CardDetail = {
   createdAt: string
   updatedAt: string | null
   comments: Comment[]
+  completedAt: string | null
+  archivedAt: string | null
+  labelIds: string[]
+  checklist: ChecklistItem[]
+}
+
+export type ArchivedCard = {
+  id: string
+  title: string
+  columnName: string
+  archivedAt: string
+}
+
+export type BoardTemplate = {
+  id: string
+  name: string
+  description: string
+  columns: string[]
+  labels: { name: string; color: LabelColor }[]
+}
+
+export type MyTask = {
+  cardId: string
+  title: string
+  boardId: string
+  boardName: string
+  columnName: string
+  dueDate: string | null
+  priority: CardPriority
+  checklistDone: number
+  checklistTotal: number
+  labels: Label[]
+  assignedToMe: boolean
 }
 
 export type CardInput = {
@@ -80,6 +141,7 @@ export type BoardDetail = {
   myRole: BoardRole
   members: BoardMember[]
   columns: Column[]
+  labels: Label[]
 }
 
 export type Invitation = {
@@ -99,11 +161,14 @@ export type InvitationPreview = {
 }
 
 type BoardInput = { name: string; description: string | null }
+type NewBoardInput = BoardInput & { template?: string }
 
 export const boardsApi = {
   list: () => api<BoardSummary[]>('/api/boards'),
   get: (id: string) => api<BoardDetail>(`/api/boards/${id}`),
-  create: (input: BoardInput) => api<BoardDetail>('/api/boards', { method: 'POST', body: input }),
+  create: (input: NewBoardInput) => api<BoardDetail>('/api/boards', { method: 'POST', body: input }),
+  templates: () => api<BoardTemplate[]>('/api/board-templates'),
+  archivedCards: (id: string) => api<ArchivedCard[]>(`/api/boards/${id}/archived-cards`),
   update: (id: string, input: BoardInput) => api<void>(`/api/boards/${id}`, { method: 'PUT', body: input }),
   remove: (id: string) => api<void>(`/api/boards/${id}`, { method: 'DELETE' }),
   removeMember: (id: string, userId: string) =>
@@ -139,6 +204,27 @@ export const cardsApi = {
   addComment: (cardId: string, content: string) =>
     api<Comment>(`/api/cards/${cardId}/comments`, { method: 'POST', body: { content } }),
   removeComment: (commentId: string) => api<void>(`/api/comments/${commentId}`, { method: 'DELETE' }),
+  setCompleted: (cardId: string, completed: boolean) =>
+    api<void>(`/api/cards/${cardId}/complete`, { method: 'PUT', body: { completed } }),
+  setArchived: (cardId: string, archived: boolean) =>
+    api<void>(`/api/cards/${cardId}/archive`, { method: 'PUT', body: { archived } }),
+  setLabels: (cardId: string, labelIds: string[]) =>
+    api<void>(`/api/cards/${cardId}/labels`, { method: 'PUT', body: { labelIds } }),
+  addChecklistItem: (cardId: string, text: string) =>
+    api<ChecklistItem>(`/api/cards/${cardId}/checklist`, { method: 'POST', body: { text } }),
+  updateChecklistItem: (itemId: string, change: { text?: string; isDone?: boolean }) =>
+    api<ChecklistItem>(`/api/checklist/${itemId}`, { method: 'PATCH', body: change }),
+  removeChecklistItem: (itemId: string) => api<void>(`/api/checklist/${itemId}`, { method: 'DELETE' }),
+}
+
+export const labelsApi = {
+  create: (boardId: string, name: string, color: LabelColor) =>
+    api<Label>(`/api/boards/${boardId}/labels`, { method: 'POST', body: { name, color } }),
+  remove: (labelId: string) => api<void>(`/api/labels/${labelId}`, { method: 'DELETE' }),
+}
+
+export const tasksApi = {
+  mine: () => api<MyTask[]>('/api/me/tasks'),
 }
 
 export type ActivityType =
@@ -157,6 +243,10 @@ export type ActivityType =
   | 'CardMoved'
   | 'CardAssigned'
   | 'CardDeleted'
+  | 'CardCompleted'
+  | 'CardReopened'
+  | 'CardArchived'
+  | 'CardRestored'
   | 'CommentAdded'
 
 export type Activity = {

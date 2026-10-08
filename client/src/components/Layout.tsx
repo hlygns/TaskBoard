@@ -22,6 +22,9 @@ export function Layout() {
           <nav className="flex items-center gap-2 text-sm">
             {user ? (
               <>
+                <Link to="/tasks" className="rounded-md px-3 py-1.5 text-slate-600 hover:bg-slate-100">
+                  Görevlerim
+                </Link>
                 <Link to="/boards" className="rounded-md px-3 py-1.5 text-slate-600 hover:bg-slate-100">
                   Panolarım
                 </Link>
