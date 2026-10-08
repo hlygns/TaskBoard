@@ -21,9 +21,23 @@ public record UpdateCardRequest(
 // Kartı hangi sütunun kaçıncı sırasına bıraktığımız.
 public record MoveCardRequest(Guid ColumnId, [Range(0, int.MaxValue)] int Index);
 
+public record SetCardCompletedRequest(bool Completed);
+
+public record SetCardArchivedRequest(bool Archived);
+
+// Kartın etiketlerinin tamamı (eklenenler + kalanlar); listede olmayanlar çıkarılır.
+public record SetCardLabelsRequest([Required] IReadOnlyList<Guid> LabelIds);
+
 public record AddCommentRequest([Required, MaxLength(2000)] string Content);
 
+public record AddChecklistItemRequest([Required, MaxLength(300)] string Text);
+
+// Kısmi güncelleme: sadece gönderilen alan değişir (ör. sadece IsDone).
+public record UpdateChecklistItemRequest([MaxLength(300)] string? Text = null, bool? IsDone = null);
+
 public record MemberRefDto(Guid UserId, string FullName);
+
+public record ChecklistItemDto(Guid Id, string Text, bool IsDone);
 
 // Pano ekranındaki kart yüzü: sadece listede görünen bilgiler.
 public record CardSummaryDto(
@@ -34,7 +48,11 @@ public record CardSummaryDto(
     DateTime? DueDate,
     MemberRefDto? Assignee,
     int CommentCount,
-    bool HasDescription);
+    bool HasDescription,
+    bool IsCompleted,
+    int ChecklistDone,
+    int ChecklistTotal,
+    IReadOnlyList<Guid> LabelIds);
 
 public record CommentDto(Guid Id, string Content, MemberRefDto Author, DateTime CreatedAt);
 
@@ -50,4 +68,10 @@ public record CardDetailDto(
     MemberRefDto? Assignee,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    IReadOnlyList<CommentDto> Comments);
+    IReadOnlyList<CommentDto> Comments,
+    DateTime? CompletedAt,
+    DateTime? ArchivedAt,
+    IReadOnlyList<Guid> LabelIds,
+    IReadOnlyList<ChecklistItemDto> Checklist);
+
+public record ArchivedCardDto(Guid Id, string Title, string ColumnName, DateTime ArchivedAt);

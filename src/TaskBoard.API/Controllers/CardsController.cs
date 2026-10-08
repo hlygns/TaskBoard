@@ -31,6 +31,42 @@ public class CardsController(ICardService cardService) : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("cards/{cardId:guid}/complete")]
+    public async Task<IActionResult> SetCompleted(Guid cardId, SetCardCompletedRequest request, CancellationToken ct)
+    {
+        await cardService.SetCompletedAsync(cardId, request.Completed, ct);
+        return NoContent();
+    }
+
+    [HttpPut("cards/{cardId:guid}/archive")]
+    public async Task<IActionResult> SetArchived(Guid cardId, SetCardArchivedRequest request, CancellationToken ct)
+    {
+        await cardService.SetArchivedAsync(cardId, request.Archived, ct);
+        return NoContent();
+    }
+
+    [HttpPut("cards/{cardId:guid}/labels")]
+    public async Task<IActionResult> SetLabels(Guid cardId, SetCardLabelsRequest request, CancellationToken ct)
+    {
+        await cardService.SetLabelsAsync(cardId, request.LabelIds, ct);
+        return NoContent();
+    }
+
+    [HttpPost("cards/{cardId:guid}/checklist")]
+    public Task<ChecklistItemDto> AddChecklistItem(Guid cardId, AddChecklistItemRequest request, CancellationToken ct) =>
+        cardService.AddChecklistItemAsync(cardId, request, ct);
+
+    [HttpPatch("checklist/{itemId:guid}")]
+    public Task<ChecklistItemDto> UpdateChecklistItem(Guid itemId, UpdateChecklistItemRequest request, CancellationToken ct) =>
+        cardService.UpdateChecklistItemAsync(itemId, request, ct);
+
+    [HttpDelete("checklist/{itemId:guid}")]
+    public async Task<IActionResult> DeleteChecklistItem(Guid itemId, CancellationToken ct)
+    {
+        await cardService.DeleteChecklistItemAsync(itemId, ct);
+        return NoContent();
+    }
+
     [HttpPost("cards/{cardId:guid}/comments")]
     public Task<CommentDto> AddComment(Guid cardId, AddCommentRequest request, CancellationToken ct) =>
         cardService.AddCommentAsync(cardId, request, ct);

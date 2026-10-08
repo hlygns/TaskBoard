@@ -37,9 +37,9 @@ public static class TestApi
         return new TestUser(client, auth);
     }
 
-    public static async Task<BoardDetailDto> CreateBoardAsync(this TestUser user, string name = "Test Panosu")
+    public static async Task<BoardDetailDto> CreateBoardAsync(this TestUser user, string name = "Test Panosu", string? template = null)
     {
-        var response = await user.Client.PostAsJsonAsync("/api/boards", new CreateBoardRequest(name, null));
+        var response = await user.Client.PostAsJsonAsync("/api/boards", new CreateBoardRequest(name, null, template));
         return await response.ReadAsync<BoardDetailDto>();
     }
 

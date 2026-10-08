@@ -42,7 +42,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
             : null;
 
         return new CardSummaryDto(card.Id, card.Title, card.Position, card.Priority, card.DueDate, assignee, 0,
-            card.Description != null);
+            card.Description != null, IsCompleted: false, ChecklistDone: 0, ChecklistTotal: 0, LabelIds: []);
     }
 
     public async Task<CardDetailDto> GetAsync(Guid cardId, CancellationToken ct = default)
@@ -65,6 +65,13 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
                 c.Comments
                     .OrderBy(m => m.CreatedAt)
                     .Select(m => new CommentDto(m.Id, m.Content, new MemberRefDto(m.Author.Id, m.Author.FullName), m.CreatedAt))
+                    .ToList(),
+                c.CompletedAt,
+                c.ArchivedAt,
+                c.Labels.Select(l => l.LabelId).ToList(),
+                c.ChecklistItems
+                    .OrderBy(i => i.Position)
+                    .Select(i => new ChecklistItemDto(i.Id, i.Text, i.IsDone))
                     .ToList()))
             .SingleAsync(ct);
     }
@@ -122,7 +129,7 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
         var columnChanged = card.ColumnId != request.ColumnId;
 
         var siblings = await db.Cards
-            .Where(c => c.ColumnId == request.ColumnId && c.Id != cardId)
+            .Where(c => c.ColumnId == request.ColumnId && c.Id != cardId && c.ArchivedAt == null)
             .OrderBy(c => c.Position).ThenBy(c => c.Id)
             .ToListAsync(ct);
 
@@ -148,6 +155,117 @@ public class CardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotif
             new { cardTitle = card.Title, columnName = card.Column.Name });
         await db.SaveChangesAsync(ct);
         await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardDeleted, cardId, card.ColumnId), ct);
+    }
+
+    public async Task SetCompletedAsync(Guid cardId, bool completed, CancellationToken ct = default)
+    {
+        var (card, boardId) = await GetForMemberAsync(cardId, ct);
+        if ((card.CompletedAt != null) == completed) return;
+
+        card.CompletedAt = completed ? DateTime.UtcNow : null;
+        db.LogActivity(boardId, currentUser.Id, completed ? ActivityType.CardCompleted : ActivityType.CardReopened, cardId,
+            new { cardTitle = card.Title });
+        await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, cardId, card.ColumnId), ct);
+    }
+
+    public async Task SetArchivedAsync(Guid cardId, bool archived, CancellationToken ct = default)
+    {
+        var (card, boardId) = await GetForMemberAsync(cardId, ct);
+        if ((card.ArchivedAt != null) == archived) return;
+
+        if (archived)
+        {
+            card.ArchivedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            // Geri alınan kart sütunun en altına döner; arşivdeyken araya giren kartlarla karışmasın.
+            var last = await db.Cards
+                .Where(c => c.ColumnId == card.ColumnId && c.ArchivedAt == null)
+                .MaxAsync(c => (double?)c.Position, ct);
+            card.ArchivedAt = null;
+            card.Position = Positioning.After(last);
+        }
+
+        db.LogActivity(boardId, currentUser.Id, archived ? ActivityType.CardArchived : ActivityType.CardRestored, cardId,
+            new { cardTitle = card.Title, columnName = card.Column.Name });
+        await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId,
+            new BoardEvent(archived ? BoardEvent.CardDeleted : BoardEvent.CardCreated, cardId, card.ColumnId), ct);
+    }
+
+    public async Task SetLabelsAsync(Guid cardId, IReadOnlyList<Guid> labelIds, CancellationToken ct = default)
+    {
+        var (card, boardId) = await GetForMemberAsync(cardId, ct);
+        var wanted = labelIds.Distinct().ToList();
+
+        // Sadece bu panonun etiketleri takılabilir.
+        var validCount = await db.Labels.CountAsync(l => l.BoardId == boardId && wanted.Contains(l.Id), ct);
+        if (validCount != wanted.Count)
+            throw new BadRequestException("Etiketlerden biri bu panoya ait değil.");
+
+        var current = await db.CardLabels.Where(cl => cl.CardId == cardId).ToListAsync(ct);
+        db.CardLabels.RemoveRange(current.Where(cl => !wanted.Contains(cl.LabelId)));
+        db.CardLabels.AddRange(wanted
+            .Where(id => current.All(cl => cl.LabelId != id))
+            .Select(id => new CardLabel { CardId = cardId, LabelId = id }));
+
+        await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, cardId, card.ColumnId), ct);
+    }
+
+    public async Task<ChecklistItemDto> AddChecklistItemAsync(Guid cardId, AddChecklistItemRequest request, CancellationToken ct = default)
+    {
+        var (card, boardId) = await GetForMemberAsync(cardId, ct);
+
+        var last = await db.ChecklistItems.Where(i => i.CardId == cardId).MaxAsync(i => (double?)i.Position, ct);
+        var item = new ChecklistItem { CardId = cardId, Text = request.Text.Trim(), Position = Positioning.After(last) };
+
+        db.ChecklistItems.Add(item);
+        await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, cardId, card.ColumnId), ct);
+
+        return new ChecklistItemDto(item.Id, item.Text, item.IsDone);
+    }
+
+    public async Task<ChecklistItemDto> UpdateChecklistItemAsync(Guid itemId, UpdateChecklistItemRequest request, CancellationToken ct = default)
+    {
+        var (item, card, boardId) = await GetChecklistItemForMemberAsync(itemId, ct);
+
+        if (request.Text is { } text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                throw new BadRequestException("Alt görev metni boş olamaz.");
+            item.Text = text.Trim();
+        }
+        if (request.IsDone is { } isDone)
+            item.IsDone = isDone;
+
+        await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, card.Id, card.ColumnId), ct);
+
+        return new ChecklistItemDto(item.Id, item.Text, item.IsDone);
+    }
+
+    public async Task DeleteChecklistItemAsync(Guid itemId, CancellationToken ct = default)
+    {
+        var (item, card, boardId) = await GetChecklistItemForMemberAsync(itemId, ct);
+
+        db.ChecklistItems.Remove(item);
+        await db.SaveChangesAsync(ct);
+        await notifier.NotifyAsync(boardId, new BoardEvent(BoardEvent.CardUpdated, card.Id, card.ColumnId), ct);
+    }
+
+    private async Task<(ChecklistItem Item, Card Card, Guid BoardId)> GetChecklistItemForMemberAsync(Guid itemId, CancellationToken ct)
+    {
+        var item = await db.ChecklistItems
+            .Include(i => i.Card).ThenInclude(c => c.Column)
+            .SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new NotFoundException("Alt görev bulunamadı.");
+
+        await db.EnsureMemberAsync(item.Card.Column.BoardId, currentUser.Id, ct);
+        return (item, item.Card, item.Card.Column.BoardId);
     }
 
     public async Task<CommentDto> AddCommentAsync(Guid cardId, AddCommentRequest request, CancellationToken ct = default)

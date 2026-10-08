@@ -3,7 +3,7 @@ using TaskBoard.Application.Common.Interfaces;
 
 namespace TaskBoard.Application.Notifications;
 
-// Her sabah çalışır. Her kullanıcıya: gecikmiş kartları, önümüzdeki 3 gün içinde son tarihi olan
+// Her sabah çalışır. Her kullanıcıya: sorumlu olduğu gecikmiş kartları, önümüzdeki 3 gün içinde son tarihi olan
 // kartları ve son 24 saatte panolarında başkalarının yaptığı hareket sayısını gönderir.
 // Anlatacak bir şeyi olmayan kullanıcıya mail gitmez.
 public class DailyDigestJob(IAppDbContext db, IEmailService emailService, TimeProvider time)
@@ -17,14 +17,17 @@ public class DailyDigestJob(IAppDbContext db, IEmailService emailService, TimePr
         var soonUntil = todayStart.AddDays(DueSoonDays);
         var since = now.AddHours(-24);
 
+        // Sorumlu kişi: atanan kişi, yoksa pano sahibi (bkz. Responsibility).
         var cards = await db.Cards
-            .Where(c => c.AssigneeId != null
-                        && c.DueDate != null && c.DueDate < soonUntil
-                        && !CompletedColumns.Names.Contains(c.Column.Name.ToLower()))
-            .Select(c => new
+            .Where(Responsibility.IsOpen)
+            .Where(c => c.DueDate != null && c.DueDate < soonUntil)
+            .WithResponsible()
+            .Where(x => x.ResponsibleId != null)
+            .Select(x => new
             {
-                AssigneeId = c.AssigneeId!.Value,
-                Item = new EmailCardItem(c.Column.BoardId, c.Column.Board.Name, c.Column.Name, c.Title, c.DueDate!.Value)
+                AssigneeId = x.ResponsibleId!.Value,
+                Item = new EmailCardItem(x.Card.Column.BoardId, x.Card.Column.Board.Name, x.Card.Column.Name,
+                    x.Card.Title, x.Card.DueDate!.Value)
             })
             .ToListAsync(ct);
 

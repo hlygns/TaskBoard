@@ -4,6 +4,7 @@ using TaskBoard.Application.Cards;
 using TaskBoard.Application.Common;
 using TaskBoard.Application.Common.Exceptions;
 using TaskBoard.Application.Common.Interfaces;
+using TaskBoard.Application.Labels;
 using TaskBoard.Domain.Entities;
 using TaskBoard.Domain.Enums;
 
@@ -12,8 +13,6 @@ namespace TaskBoard.Application.Boards;
 public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNotifier notifier, IBoardCache cache)
     : IBoardService
 {
-    private static readonly string[] DefaultColumns = ["Yapılacak", "Yapılıyor", "Bitti"];
-
     public async Task<IReadOnlyList<BoardSummaryDto>> GetMyBoardsAsync(CancellationToken ct = default)
     {
         // Select ile projeksiyon: EF sadece gereken kolonları çeker ve MemberCount'u
@@ -59,7 +58,9 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
                         c.Id,
                         c.Name,
                         c.Position,
+                        // Arşivlenen kartlar panoda görünmez.
                         c.Cards
+                            .Where(card => card.ArchivedAt == null)
                             .OrderBy(card => card.Position).ThenBy(card => card.Id)
                             .Select(card => new CardSummaryDto(
                                 card.Id,
@@ -69,8 +70,16 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
                                 card.DueDate,
                                 card.Assignee == null ? null : new MemberRefDto(card.Assignee.Id, card.Assignee.FullName),
                                 card.Comments.Count,
-                                card.Description != null))
+                                card.Description != null,
+                                card.CompletedAt != null,
+                                card.ChecklistItems.Count(i => i.IsDone),
+                                card.ChecklistItems.Count,
+                                card.Labels.Select(l => l.LabelId).ToList()))
                             .ToList()))
+                    .ToList(),
+                b.Labels
+                    .OrderBy(l => l.Name)
+                    .Select(l => new LabelDto(l.Id, l.Name, l.Color))
                     .ToList()))
             .SingleAsync(ct);
 
@@ -78,8 +87,20 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
         return board;
     }
 
+    public async Task<IReadOnlyList<ArchivedCardDto>> GetArchivedCardsAsync(Guid boardId, CancellationToken ct = default)
+    {
+        await db.EnsureMemberAsync(boardId, currentUser.Id, ct);
+
+        return await db.Cards
+            .Where(c => c.Column.BoardId == boardId && c.ArchivedAt != null)
+            .OrderByDescending(c => c.ArchivedAt)
+            .Select(c => new ArchivedCardDto(c.Id, c.Title, c.Column.Name, c.ArchivedAt!.Value))
+            .ToListAsync(ct);
+    }
+
     public async Task<BoardDetailDto> CreateAsync(CreateBoardRequest request, CancellationToken ct = default)
     {
+        var template = BoardTemplates.Find(request.Template);
         var board = new Board
         {
             Name = request.Name.Trim(),
@@ -89,10 +110,13 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
         // Oluşturan kişi otomatik olarak sahip olur.
         board.Members.Add(new BoardMember { UserId = currentUser.Id, Role = BoardRole.Owner });
 
-        for (var i = 0; i < DefaultColumns.Length; i++)
-            board.Columns.Add(new Column { Name = DefaultColumns[i], Position = i + 1 });
+        for (var i = 0; i < template.Columns.Count; i++)
+            board.Columns.Add(new Column { Name = template.Columns[i], Position = i + 1 });
 
-        // Pano, üyelik ve sütunlar tek SaveChanges ile tek transaction'da yazılır.
+        foreach (var label in template.Labels)
+            board.Labels.Add(new Label { Name = label.Name, Color = label.Color });
+
+        // Pano, üyelik, sütunlar ve etiketler tek SaveChanges ile tek transaction'da yazılır.
         db.Boards.Add(board);
         db.LogActivity(board.Id, currentUser.Id, ActivityType.BoardCreated, board.Id, new { boardName = board.Name });
         await db.SaveChangesAsync(ct);

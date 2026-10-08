@@ -15,6 +15,9 @@ public interface IAppDbContext
     DbSet<Column> Columns { get; }
     DbSet<Card> Cards { get; }
     DbSet<Comment> Comments { get; }
+    DbSet<ChecklistItem> ChecklistItems { get; }
+    DbSet<Label> Labels { get; }
+    DbSet<CardLabel> CardLabels { get; }
     DbSet<ActivityLog> ActivityLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

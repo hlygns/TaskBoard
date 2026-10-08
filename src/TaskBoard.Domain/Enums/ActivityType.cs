@@ -18,5 +18,9 @@ public enum ActivityType
     CardMoved = 22,
     CardAssigned = 23,
     CardDeleted = 24,
+    CardCompleted = 25,
+    CardReopened = 26,
+    CardArchived = 27,
+    CardRestored = 28,
     CommentAdded = 30
 }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskBoard.Application.Boards;
+using TaskBoard.Application.Cards;
 using TaskBoard.Application.Invitations;
 
 namespace TaskBoard.API.Controllers;
@@ -13,6 +14,14 @@ public class BoardsController(IBoardService boardService, IInvitationService inv
     [HttpGet]
     public Task<IReadOnlyList<BoardSummaryDto>> GetMyBoards(CancellationToken ct) =>
         boardService.GetMyBoardsAsync(ct);
+
+    // Yeni pano açarken seçilebilen hazır sütun/etiket setleri.
+    [HttpGet("~/api/board-templates")]
+    public IReadOnlyList<BoardTemplate> GetTemplates() => BoardTemplates.All;
+
+    [HttpGet("{boardId:guid}/archived-cards")]
+    public Task<IReadOnlyList<ArchivedCardDto>> GetArchivedCards(Guid boardId, CancellationToken ct) =>
+        boardService.GetArchivedCardsAsync(boardId, ct);
 
     [HttpGet("{boardId:guid}")]
     public Task<BoardDetailDto> Get(Guid boardId, CancellationToken ct) =>

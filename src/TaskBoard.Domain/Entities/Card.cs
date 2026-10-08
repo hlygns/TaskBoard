@@ -14,6 +14,13 @@ public class Card : BaseEntity
     // bu alan sayesinde aynı karta iki kez mail gitmez. Son tarih değişince sıfırlanır.
     public DateTime? DueReminderSentAt { get; set; }
 
+    // Tamamlandı işareti. Sütunun adından ("Bitti") tahmin etmek yerine kartın kendi bilgisi:
+    // tamamlanan kartlar soluk görünür, hatırlatma ve özet maillerine girmez.
+    public DateTime? CompletedAt { get; set; }
+
+    // Arşivlenen kart panoda görünmez ama silinmez; geri alınabilir.
+    public DateTime? ArchivedAt { get; set; }
+
     // Kesirli sıra numarası: kart iki kartın arasına bırakılınca (önceki + sonraki) / 2 olur.
     // Böylece taşıma işlemi diğer kartları güncellemeden tek satırı değiştirir.
     public double Position { get; set; }
@@ -25,4 +32,6 @@ public class Card : BaseEntity
     public User? Assignee { get; set; }
 
     public ICollection<Comment> Comments { get; set; } = new List<Comment>();
+    public ICollection<ChecklistItem> ChecklistItems { get; set; } = new List<ChecklistItem>();
+    public ICollection<CardLabel> Labels { get; set; } = new List<CardLabel>();
 }
