@@ -15,8 +15,9 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
 {
     public async Task<IReadOnlyList<BoardSummaryDto>> GetMyBoardsAsync(CancellationToken ct = default)
     {
-        // Select ile projeksiyon: EF sadece gereken kolonları çeker ve MemberCount'u
-        // SQL'de COUNT olarak hesaplar; üyeleri belleğe yüklemez.
+        // Select ile projeksiyon: EF sadece gereken kolonları çeker ve sayımları
+        // SQL'de COUNT olarak hesaplar; üyeleri ve kartları belleğe yüklemez.
+        var todayStart = DateTime.UtcNow.Date;
         return await db.BoardMembers
             .Where(m => m.UserId == currentUser.Id)
             .OrderByDescending(m => m.Board.CreatedAt)
@@ -26,7 +27,11 @@ public class BoardService(IAppDbContext db, ICurrentUser currentUser, IBoardNoti
                 m.Board.Description,
                 m.Role,
                 m.Board.Members.Count,
-                m.Board.CreatedAt))
+                m.Board.CreatedAt,
+                m.Board.Columns.SelectMany(c => c.Cards).Count(c => c.ArchivedAt == null),
+                m.Board.Columns.SelectMany(c => c.Cards).Count(c => c.ArchivedAt == null && c.CompletedAt != null),
+                m.Board.Columns.SelectMany(c => c.Cards)
+                    .Count(c => c.ArchivedAt == null && c.CompletedAt == null && c.DueDate < todayStart)))
             .ToListAsync(ct);
     }
 

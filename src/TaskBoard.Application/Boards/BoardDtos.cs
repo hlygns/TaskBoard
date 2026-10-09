@@ -21,7 +21,11 @@ public record BoardSummaryDto(
     string? Description,
     BoardRole MyRole,
     int MemberCount,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    // Panolar listesindeki ilerleme çubuğu için (arşivlenen kartlar sayılmaz).
+    int CardCount,
+    int CompletedCount,
+    int OverdueCount);
 
 public record BoardMemberDto(Guid UserId, string FullName, string Email, BoardRole Role, DateTime JoinedAt);
 

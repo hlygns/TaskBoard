@@ -75,6 +75,38 @@ public class AuthTests(TaskBoardApiFactory api)
         Assert.Equal(HttpStatusCode.Unauthorized, (await Refresh(client, second)).StatusCode);
     }
 
+    [Fact]
+    public async Task Mobile_client_gets_refresh_token_in_body_and_no_cookie()
+    {
+        var user = await api.RegisterAsync();
+        var client = api.CreateHttpsClient(handleCookies: false);
+        client.DefaultRequestHeaders.Add("X-Client", "mobile");
+
+        var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(user.Email, TestApi.Password));
+        var auth = await login.ReadAsync<AuthResponse>();
+
+        Assert.False(login.Headers.Contains("Set-Cookie"));
+        Assert.False(string.IsNullOrEmpty(auth.RefreshToken));
+
+        // Yenileme gövdedeki token ile; rotation mobilde de geçerli.
+        var refreshed = await (await client.PostAsJsonAsync("/api/auth/refresh", new RefreshTokenRequest(auth.RefreshToken)))
+            .ReadAsync<AuthResponse>();
+        Assert.NotEqual(auth.RefreshToken, refreshed.RefreshToken);
+
+        var reused = await client.PostAsJsonAsync("/api/auth/refresh", new RefreshTokenRequest(auth.RefreshToken));
+        Assert.Equal(HttpStatusCode.Unauthorized, reused.StatusCode);
+    }
+
+    [Fact]
+    public async Task Web_client_never_receives_refresh_token_in_body()
+    {
+        var user = await api.RegisterAsync();
+
+        var login = await api.CreateHttpsClient().PostAsJsonAsync("/api/auth/login", new LoginRequest(user.Email, TestApi.Password));
+
+        Assert.DoesNotContain("refreshToken", await login.Content.ReadAsStringAsync());
+    }
+
     private static Task<HttpResponseMessage> Refresh(HttpClient client, string token)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/refresh");
