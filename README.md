@@ -6,9 +6,12 @@ Ekipler için Kanban tarzı görev yönetimi uygulaması. Pano oluştur, ekip ar
 
 **Backend:** ASP.NET Core 10 · Clean Architecture · EF Core · PostgreSQL · JWT · SignalR · Hangfire · Redis
 **Frontend:** React 19 · TypeScript · Vite · Tailwind CSS · dnd-kit
+**Mobil:** Expo SDK 57 · React Native · Expo Router · expo-secure-store
 **Altyapı:** Docker Compose · nginx · GitHub Actions · xUnit + Testcontainers
 
 ![Pano ekranı](docs/screenshots/board.png)
+
+![Panolarım](docs/screenshots/boards.png)
 
 | Kart detayı: etiket, alt görevler | Görevlerim |
 |---|---|
@@ -29,12 +32,22 @@ Ekipler için Kanban tarzı görev yönetimi uygulaması. Pano oluştur, ekip ar
 - **Tamamlandı işareti:** Kart yüzünden tek tıkla; biten kart soluk ve üstü çizili görünür, hatırlatmalara girmez
 - **Etiketler ve filtre:** Panoya özel renkli etiketler; arama, etiket, öncelik, tarih (gecikmiş / bugün / bu hafta / tarihsiz) ve "tamamlananları gizle" filtreleri
 - **Arşiv:** Kartı silmeden panodan kaldır, istediğinde geri al
+- **Izgara / yan yana düzen:** Sütunlar ekranı dolduran ızgarada ya da klasik yatay Kanban düzeninde; tercih hatırlanır
+- **Mobil uygulama (Expo):** Telefondan Görevlerim, panolar ve kart düzenleme
 - **Pano şablonları:** Basit, Yazılım projesi, Ders / Ödev, Kişisel — hazır sütun ve etiketlerle
 - **Görevlerim:** Tüm panolardaki açık işler tek listede: Gecikmiş / Bugün / Yarın / Bu hafta / Daha sonra; buradan tamamla ya da karta git
 - **Canlı güncelleme (SignalR):** Başkasının taşıdığı kart, eklediği yorum vb. sayfa yenilemeden görünür; "Ayşe bir kartı taşıdı" bildirimi ve panoda o an kimlerin olduğu (yeşil nokta)
 - **Aktivite geçmişi:** "Hülya 'Logo' kartını taşıdı: Yapılacak → Bitti – 10 dk önce"; canlı güncellenir, kart silinse bile kaydı kalır
 - **E-posta bildirimleri (Hangfire):** Davet maili, son tarihi yaklaşan kartlar için hatırlatma, her sabah günlük özet
 - **Redis:** Pano verisi cache'i; SignalR ve "şu an panoda" bilgisi birden fazla API sunucusunda çalışır
+
+### Mobil uygulama
+
+| Görevlerim | Pano | Kart |
+|---|---|---|
+| ![Görevlerim](docs/screenshots/mobile-tasks.png) | ![Pano](docs/screenshots/mobile-board.png) | ![Kart](docs/screenshots/mobile-card.png) |
+
+Aynı API'yi kullanan Expo (React Native) uygulaması: Görevlerim, panolar, sütun sekmeli pano görünümü ve anında kaydeden kart detayı. Mobil istemci refresh token'ı cookie yerine yanıt gövdesinde alır ve telefonun şifreli deposunda saklar (`X-Client: mobile`). Kurulum ve telefonda çalıştırma: [mobile/README.md](mobile/README.md).
 
 ## Mimari
 
@@ -47,6 +60,7 @@ TaskBoard/
 │   └── TaskBoard.API/             → Controller'lar, SignalR hub, JWT doğrulama, hata yönetimi (ProblemDetails)
 ├── tests/TaskBoard.Tests/         → xUnit: birim testleri + Testcontainers ile entegrasyon testleri
 ├── client/                        → React + TypeScript (Vite); Dockerfile + nginx.conf
+├── mobile/                        → Expo / React Native uygulaması
 ├── .github/workflows/ci.yml       → GitHub Actions
 └── docker-compose.yml             → PostgreSQL, Redis, Mailpit (+ "app" profilinde api ve client)
 ```
@@ -201,7 +215,7 @@ dotnet test        # Docker çalışıyor olmalı
 
 ### CI (GitHub Actions)
 
-Her push ve pull request'te: **backend** (Release derleme + tüm testler, Testcontainers dahil) · **frontend** (lint + TypeScript + build) · ikisi geçerse **Docker** image'larının derlenmesi.
+Her push ve pull request'te: **backend** (Release derleme + tüm testler, Testcontainers dahil) · **frontend** (lint + TypeScript + build) · **mobil** (Expo lint + TypeScript) · backend ve frontend geçerse **Docker** image'larının derlenmesi.
 
 ## API
 
@@ -242,4 +256,5 @@ Her push ve pull request'te: **backend** (Release derleme + tüm testler, Testco
 - [x] Redis ile pano cache'i, SignalR backplane ve dağıtık "şu an panoda" bilgisi
 - [x] Docker Compose ile tüm sistem, xUnit + Testcontainers entegrasyon testleri, GitHub Actions ile CI
 - [x] Kişisel kullanım: alt görevler, tamamlandı işareti, etiketler + filtre, arşiv, pano şablonları, "Görevlerim"
-- [ ] Canlı demo (yayınlama) ve PWA ile telefona yükleme
+- [x] Expo (React Native) mobil uygulama
+- [ ] Canlı demo (yayınlama)
