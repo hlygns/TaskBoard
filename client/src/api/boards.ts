@@ -9,6 +9,9 @@ export type BoardSummary = {
   myRole: BoardRole
   memberCount: number
   createdAt: string
+  cardCount: number
+  completedCount: number
+  overdueCount: number
 }
 
 export type BoardMember = {

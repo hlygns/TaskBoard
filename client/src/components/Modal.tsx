@@ -29,7 +29,19 @@ export function Modal({ title, onClose, size = 'md', children }: ModalProps) {
         className={`w-full rounded-xl bg-white p-6 shadow-xl ${size === 'lg' ? 'max-w-2xl' : 'max-w-md'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          {/* Dışarı tıklamak ve Esc de kapatır; düğme bunu bilmeyenler için görünür bir yol. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Kapat"
+            title="Kapat (Esc)"
+            className="-mt-1 -mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-md text-xl leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            ×
+          </button>
+        </div>
         <div className="mt-4">{children}</div>
       </div>
     </div>

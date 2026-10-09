@@ -10,10 +10,17 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { arrayMove, horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable'
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { cardsApi, columnsApi, type CardSummary, type Column, type Label } from '../../api/boards'
 import { BoardViewContext } from './boardView'
+import { gridColumnsClass, type BoardLayout } from './layout'
 import { CardFace } from './CardItem'
 import { ColumnView } from './ColumnView'
 
@@ -26,13 +33,14 @@ type BoardCanvasProps = {
   labels: Label[]
   // Arama/filtre açıksa: sadece eşleşen kartlar görünür ve sürükle-bırak kapanır.
   filter?: (card: CardSummary) => boolean
+  layout: BoardLayout
 }
 
 // Sürükle-bırak akışı:
 //  1. onDragStart: hangi kart/sütun tutuldu, nereden alındı → kaydet
 //  2. onDragOver : kart başka bir sütunun üstüne gelince ekranda hemen o sütuna geçir (canlı önizleme)
 //  3. onDragEnd  : son konumu hesapla, ekranı güncelle (iyimser/optimistic), sonra sunucuya bildir
-export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, labels, filter }: BoardCanvasProps) {
+export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, labels, filter, layout }: BoardCanvasProps) {
   const [columns, setColumns] = useState(initialColumns)
   const [activeCard, setActiveCard] = useState<CardSummary | null>(null)
   const [activeColumn, setActiveColumn] = useState<Column | null>(null)
@@ -66,7 +74,7 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, lab
   }
 
   const labelMap = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels])
-  const boardView = { labels: labelMap, toggleComplete, dragDisabled: filter !== undefined }
+  const boardView = { labels: labelMap, toggleComplete, dragDisabled: filter !== undefined, layout }
 
   // Taşıma isteği bittikten sonra, sürükleme sırasında kaçırılan değişiklikler varsa panoyu tazele.
   function afterDrop(request?: Promise<unknown>) {
@@ -186,8 +194,19 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, lab
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex h-full items-start gap-4 overflow-x-auto pb-4">
-        <SortableContext items={columns.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
+      {/* Izgarada sütunlar ekranı doldurur ve alt alta da dizilir; yan yana düzende yatay kaydırılır.
+          Sürükle-bırak sıralama stratejisi de düzene göre değişir (ızgara için rect). */}
+      <div
+        className={
+          layout === 'grid'
+            ? `grid items-start gap-5 pb-4 ${gridColumnsClass(columns.length)}`
+            : 'flex h-full items-start gap-4 overflow-x-auto pb-4'
+        }
+      >
+        <SortableContext
+          items={columns.map((c) => c.id)}
+          strategy={layout === 'grid' ? rectSortingStrategy : horizontalListSortingStrategy}
+        >
           {columns.map((column) => (
             <ColumnView
               key={column.id}
@@ -206,6 +225,7 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, lab
         </SortableContext>
 
         <AddColumn
+          layout={layout}
           boardId={boardId}
           onAdded={(column) => setColumns((prev) => [...prev, column])}
         />
@@ -226,7 +246,16 @@ export function BoardCanvas({ boardId, initialColumns, onOpenCard, onReload, lab
   )
 }
 
-function AddColumn({ boardId, onAdded }: { boardId: string; onAdded: (column: Column) => void }) {
+function AddColumn({
+  layout,
+  boardId,
+  onAdded,
+}: {
+  layout: BoardLayout
+  boardId: string
+  onAdded: (column: Column) => void
+}) {
+  const width = layout === 'grid' ? 'w-full' : 'w-80 shrink-0'
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
 
@@ -242,14 +271,14 @@ function AddColumn({ boardId, onAdded }: { boardId: string; onAdded: (column: Co
     return (
       <button
         onClick={() => setOpen(true)}
-        className="w-72 shrink-0 rounded-lg border-2 border-dashed border-slate-300 px-3 py-3 text-left text-sm text-slate-500 hover:border-slate-400 hover:text-slate-700"
+        className={`${width} rounded-xl border-2 border-dashed border-slate-300 px-4 py-3.5 text-left text-sm font-medium text-slate-500 hover:border-indigo-400 hover:text-indigo-700`}
       >
         + Sütun ekle
       </button>
     )
 
   return (
-    <form onSubmit={handleSubmit} className="w-72 shrink-0 rounded-lg bg-slate-100 p-3">
+    <form onSubmit={handleSubmit} className={`${width} rounded-xl bg-slate-100 p-3`}>
       <input
         autoFocus
         value={name}

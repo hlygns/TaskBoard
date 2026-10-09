@@ -17,7 +17,7 @@ type ColumnViewProps = {
 }
 
 export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDeleted, filter }: ColumnViewProps) {
-  const { dragDisabled } = useBoardView()
+  const { dragDisabled, layout } = useBoardView()
   // Sütunun kendisi de sürüklenebilir; sadece başlığından tutulur (listeners başlıkta).
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: column.id,
@@ -66,12 +66,14 @@ export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDelet
     <section
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex max-h-full w-72 shrink-0 flex-col rounded-lg bg-slate-100 ${isDragging ? 'opacity-40' : ''}`}
+      className={`flex max-h-full flex-col rounded-xl border border-slate-200/70 bg-slate-100/80 ${
+        layout === 'grid' ? 'w-full' : 'w-80 shrink-0'
+      } ${isDragging ? 'opacity-40' : ''}`}
     >
       <header
         {...attributes}
         {...listeners}
-        className={`group flex items-center gap-2 px-3 pt-3 pb-2 ${dragDisabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`group flex items-center gap-2 px-3.5 pt-3.5 pb-2.5 ${dragDisabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
       >
         {renaming ? (
           <input
@@ -95,10 +97,10 @@ export function ColumnView({ column, onOpenCard, onCardAdded, onRenamed, onDelet
           <h2
             onClick={() => setRenaming(true)}
             title="Yeniden adlandırmak için tıkla"
-            className="min-w-0 flex-1 cursor-text truncate text-sm font-semibold text-slate-700"
+            className="min-w-0 flex-1 cursor-text truncate text-[0.95rem] font-semibold text-slate-800"
           >
             {column.name}{' '}
-            <span className="font-normal text-slate-400">
+            <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500">
               {filter ? `${visibleCards.length}/${column.cards.length}` : column.cards.length}
             </span>
           </h2>

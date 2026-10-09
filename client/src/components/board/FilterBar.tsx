@@ -17,7 +17,7 @@ export function FilterBar({ filter, labels, onChange }: FilterBarProps) {
   const set = (change: Partial<BoardFilter>) => onChange({ ...filter, ...change })
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       <input
         type="search"
         value={filter.text}

@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/* Tailwind ölçüleri rem cinsinden: kök yazı boyutunu büyütünce yazılar, boşluklar ve kartlar
+   büyük ekranlarda orantılı olarak birlikte büyür. */
+html {
+  font-size: 16px;
+}
+
+@media (min-width: 1536px) {
+  html {
+    font-size: 17px;
+  }
+}
+
+@media (min-width: 1800px) {
+  html {
+    font-size: 18px;
+  }
+}
+
 body {
   @apply bg-slate-50 text-slate-800 antialiased;
 }
